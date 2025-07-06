@@ -43,6 +43,7 @@ function sendToServer(text) {
 }
 
 function speak(text) {
+    speechSynthesis.cancel(); // Cancel any previous speech
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
     speechSynthesis.speak(utterance);

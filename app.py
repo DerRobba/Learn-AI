@@ -8,7 +8,14 @@ load_dotenv()
 app = Flask(__name__)
 
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+
+# In-memory conversation history
+conversation_history = []
+system_prompt = os.getenv("SYSTEM_PROMPT")
+if system_prompt and not any(d.get('role') == 'system' for d in conversation_history):
+    conversation_history.append({"role": "system", "content": system_prompt})
+
 
 @app.route('/')
 def index():
@@ -16,29 +23,31 @@ def index():
 
 @app.route('/ask', methods=['POST'])
 def ask():
+    global conversation_history
     data = request.get_json()
     question = data.get('question')
 
     if not question:
         return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
 
+    # Add user question to history
+    conversation_history.append({"role": "user", "content": question})
+
     try:
         payload = {
             "model": OLLAMA_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": question
-                }
-            ]
+            "messages": conversation_history,
+            "stream": False
         }
         response = requests.post(OLLAMA_API_URL, json=payload)
-        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
-        print(f"Raw Ollama response text: {response.text}") # Added for debugging
+        response.raise_for_status()
         response_data = response.json()
-        print(f"Parsed Ollama response JSON: {response_data}") # Added for debugging
 
         answer = response_data.get('message', {}).get('content', 'Ich konnte keine Antwort finden.')
+        
+        # Add model answer to history
+        conversation_history.append({"role": "assistant", "content": answer})
+
         return jsonify({'answer': answer})
     except requests.exceptions.RequestException as e:
         print(f"Error communicating with Ollama API: {e}")
