@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import requests
 from dotenv import load_dotenv
 
@@ -47,7 +47,14 @@ def ask():
         
         # Add model answer to history
         conversation_history.append({"role": "assistant", "content": answer})
-
+        # Check if AI wants to create .md file
+        if answer.lower().startswith("createmd:"):
+            content = answer[9:]
+            answer = "Sie können ihr Arbeitsblatt nun downloaden."
+            print(content.strip())
+            with open("output.md", "w") as f:
+                f.write(content.strip())
+            os.system('curl --data-urlencode "markdown=$(cat output.md)" --output output.pdf http://192.168.178.94:8002')
         return jsonify({'answer': answer})
     except requests.exceptions.RequestException as e:
         print(f"Error communicating with Ollama API: {e}")
@@ -55,6 +62,13 @@ def ask():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return jsonify({'answer': 'Ein unerwarteter Fehler ist aufgetreten.'}), 500
-
+@app.route('/download')
+def download_file():
+    file_path="output.pdf"
+    return send_file(
+        file_path,
+        as_attachment=True,
+        download_name="Arbeitsblatt.pdf"
+    )
 if __name__ == '__main__':
     app.run(debug=True)
