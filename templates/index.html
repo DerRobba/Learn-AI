@@ -7,20 +7,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=adb,delete,download,image,mic,neurology,save,search" />
 </head>
 <body>
     <div class="app-container">
         <header class="app-header">
             <div class="logo-container">
-                <i class="fa-brain fa-lg"></i>
+                <span class="material-symbols-outlined">neurology</span>
                 <h1>Intelligenter Lernassistent</h1>
             </div>
             <div class="header-actions">
-                <input type="file" accept="image/png, image/jpeg" />
-            </div>
-            <div class="header-actions">
                 <a href="/download" class="worksheet-link">
-                    <i class="fa-file-lines"></i>
+                    <span class="material-symbols-outlined">download</span>
                     <span>Arbeitsblatt downloaden</span>
                 </a>
             </div>
@@ -30,7 +28,7 @@
             <div class="chat-messages" id="chat-history">
                 <div class="welcome-message">
                     <div class="bot-avatar">
-                        <i class="fa-robot"></i>
+                        <span class="material-symbols-outlined">adb</span>
                     </div>
                     <div class="message-content">
                         <div class="message-header">
@@ -43,13 +41,44 @@
             </div>
             
             <div class="input-container">
-                <button id="record-button" class="record-button">
-                    <i class="fa-microphone"></i>
-                    <span>Aufnahme starten</span>
-                </button>
+                <div class="input-actions">
+                    <button id="record-button" class="record-button">
+                        <span class="material-symbols-outlined">mic</span>
+                        <span>Aufnahme starten</span>
+                    </button>
+                    <button id="image-upload-button" class="image-upload-button">
+                        <span class="material-symbols-outlined">image</span>
+                        <span>Bild hochladen</span>
+                    </button>
+                    <button id="clear-cache-button" class="clear-cache-button" style="display: none;">
+                        <span class="material-symbols-outlined">delete</span>
+                        <span>Cache leeren</span>
+                    </button>
+                    <input type="file" id="image-input" accept="image/*" style="display: none;">
+                </div>
+                <div id="image-preview" class="image-preview" style="display: none;">
+                    <img id="preview-image" src="" alt="Vorschau">
+                    <div class="image-actions">
+                        <button id="cache-image" class="cache-button">
+                            <span class="material-symbols-outlined">save</span>
+                            <span>Im Zwischenspeicher ablegen</span>
+                        </button>
+                        <button id="analyze-image" class="analyze-button">
+                            <span class="material-symbols-outlined">search</span>
+                            <span>Bild analysieren</span>
+                        </button>
+                        <button id="remove-image" class="remove-button">
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="cached-image-indicator" class="cached-image-indicator" style="display: none;">
+                    <span class="material-symbols-outlined">image</span>
+                    <span>Bild im Zwischenspeicher verfügbar</span>
+                </div>
                 <div class="input-hint">
-                    <i class="fa-microphone-lines"></i>
-                    <span>Klicke auf das Mikrofon um deine Frage zu stellen</span>
+                    <span class="material-symbols-outlined">mic</span>
+                    <span>Klicke auf das Mikrofon um zu sprechen oder lade ein Bild zur Analyse hoch</span>
                 </div>
             </div>
         </main>

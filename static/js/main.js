@@ -1,6 +1,17 @@
 document.addEventListener('DOMContentLoaded', function() {
     const recordButton = document.getElementById('record-button');
     const chatHistory = document.getElementById('chat-history');
+    const imageUploadButton = document.getElementById('image-upload-button');
+    const imageInput = document.getElementById('image-input');
+    const imagePreview = document.getElementById('image-preview');
+    const previewImage = document.getElementById('preview-image');
+    const analyzeButton = document.getElementById('analyze-image');
+    const cacheButton = document.getElementById('cache-image');
+    const removeButton = document.getElementById('remove-image');
+    const clearCacheButton = document.getElementById('clear-cache-button');
+    const cachedImageIndicator = document.getElementById('cached-image-indicator');
+
+    let uploadedImage = null;
     
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -187,5 +198,173 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function formatTime(date) {
         return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Image upload functionality
+    imageUploadButton.addEventListener('click', () => {
+        imageInput.click();
+    });
+
+    imageInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                uploadedImage = file;
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    analyzeButton.addEventListener('click', () => {
+        if (uploadedImage) {
+            sendImageToServer(uploadedImage);
+        }
+    });
+
+    cacheButton.addEventListener('click', () => {
+        if (uploadedImage) {
+            cacheImageOnServer(uploadedImage);
+        }
+    });
+
+    clearCacheButton.addEventListener('click', () => {
+        clearImageCache();
+    });
+
+    removeButton.addEventListener('click', () => {
+        uploadedImage = null;
+        previewImage.src = '';
+        imagePreview.style.display = 'none';
+        imageInput.value = '';
+    });
+
+    function sendImageToServer(imageFile) {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+
+        // Show thinking indicator
+        const thinkingIndicator = document.createElement('div');
+        thinkingIndicator.className = 'message bot-message';
+        thinkingIndicator.innerHTML = `
+            <div class="bot-avatar">
+                <i class="fa-robot"></i>
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="bot-name">KI-Assistent</span>
+                    <span class="message-time">${formatTime(new Date())}</span>
+                </div>
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        `;
+        chatHistory.appendChild(thinkingIndicator);
+        scrollToBottom();
+
+        // Add user message showing image upload
+        addUserMessage('📷 Bild zur Analyse hochgeladen');
+
+        fetch('/analyze-image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove thinking indicator
+            chatHistory.removeChild(thinkingIndicator);
+
+            // Add bot response
+            addBotMessage(data.analysis);
+            speak(data.analysis);
+
+            // Clear image preview
+            removeButton.click();
+        })
+        .catch(error => {
+            console.error('Error analyzing image:', error);
+            chatHistory.removeChild(thinkingIndicator);
+            addBotMessage("Es gab ein Problem bei der Analyse des Bildes. Bitte versuche es später noch einmal.");
+        });
+    }
+
+    function cacheImageOnServer(imageFile) {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+
+        // Show thinking indicator
+        const thinkingIndicator = document.createElement('div');
+        thinkingIndicator.className = 'message bot-message';
+        thinkingIndicator.innerHTML = `
+            <div class="bot-avatar">
+                <i class="fa-robot"></i>
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="bot-name">KI-Assistent</span>
+                    <span class="message-time">${formatTime(new Date())}</span>
+                </div>
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        `;
+        chatHistory.appendChild(thinkingIndicator);
+        scrollToBottom();
+
+        // Add user message showing image cache
+        addUserMessage('💾 Bild zum Zwischenspeicher hinzugefügt');
+
+        fetch('/cache-image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove thinking indicator
+            chatHistory.removeChild(thinkingIndicator);
+
+            // Add bot response
+            addBotMessage(data.message);
+            speak(data.message);
+
+            // Show cache indicator and clear cache button
+            cachedImageIndicator.style.display = 'block';
+            clearCacheButton.style.display = 'inline-flex';
+
+            // Clear image preview
+            removeButton.click();
+        })
+        .catch(error => {
+            console.error('Error caching image:', error);
+            chatHistory.removeChild(thinkingIndicator);
+            addBotMessage("Es gab ein Problem beim Zwischenspeichern des Bildes. Bitte versuche es später noch einmal.");
+        });
+    }
+
+    function clearImageCache() {
+        fetch('/clear-cache', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            addBotMessage(data.message);
+            speak(data.message);
+
+            // Hide cache indicator and clear cache button
+            cachedImageIndicator.style.display = 'none';
+            clearCacheButton.style.display = 'none';
+        })
+        .catch(error => {
+            console.error('Error clearing cache:', error);
+            addBotMessage("Es gab ein Problem beim Leeren des Zwischenspeichers.");
+        });
     }
 });
