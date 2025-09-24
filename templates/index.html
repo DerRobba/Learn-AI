@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligenter Lernassistent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-container">
+                <i class="fa-brain fa-lg"></i>
+                <h1>Intelligenter Lernassistent</h1>
+            </div>
+            <div class="header-actions">
+                <input type="file" accept="image/png, image/jpeg" />
+            </div>
+            <div class="header-actions">
+                <a href="/download" class="worksheet-link">
+                    <i class="fa-file-lines"></i>
+                    <span>Arbeitsblatt downloaden</span>
+                </a>
+            </div>
+        </header>
+        
+        <main class="chat-container">
+            <div class="chat-messages" id="chat-history">
+                <div class="welcome-message">
+                    <div class="bot-avatar">
+                        <i class="fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="bot-name">KI-Assistent</span>
+                            <span class="message-time">Jetzt</span>
+                        </div>
+                        <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-container">
+                <button id="record-button" class="record-button">
+                    <i class="fa-microphone"></i>
+                    <span>Aufnahme starten</span>
+                </button>
+                <div class="input-hint">
+                    <i class="fa-microphone-lines"></i>
+                    <span>Klicke auf das Mikrofon um deine Frage zu stellen</span>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
