@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ assignment.title }} - Intelligenter Lernassistent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body class="centered-page">
+    <header class="app-header">
+        <div class="logo-container">
+            <span class="material-symbols-outlined brain">neurology</span>
+            <h1>Intelligenter Lernassistent</h1>
+        </div>
+        <div class="header-actions">
+            <a href="{{ url_for('index') }}" class="logout-link">
+                <span class="material-symbols-outlined">arrow_back</span>
+                <span>Zurück</span>
+            </a>
+        </div>
+    </header>
+
+    <div class="assignment-card">
+        <h2>{{ assignment.title }}</h2><br>
+        <p>{{ assignment.description }}</p>
+
+        <hr>
+        <br>
+        {% if user_type == 'student' %}
+            <h3>Deine Abgabe</h3><br>
+            {% if submission %}
+                <div class="submission-view">
+                    <p><strong>Abgegeben am:</strong> {{ submission.submitted_at }}</p>
+                    <p><strong>Inhalt:</strong></p>
+                    <pre>{{ submission.content }}</pre>
+                </div>
+            {% else %}
+                <form method="POST">
+                    <div class="input-group">
+                        <label for="submission_content">Lösung</label>
+                        <textarea id="submission_content" name="submission_content" rows="10" required></textarea>
+                    </div>
+                    <button type="submit" class="login-button">Abgeben</button>
+                </form>
+            {% endif %}
+        {% elif user_type == 'teacher' %}
+            <br><h3>Abgaben</h3>
+            {% if submissions %}
+                <ul class="submission-list">
+                    {% for sub in submissions %}
+                        <li class="submission-item">
+                            <p><strong>Schüler:</strong> {{ sub.student_username }}</p>
+                            <p><strong>Abgegeben am:</strong> {{ sub.submitted_at }}</p>
+                            <pre>{{ sub.content }}</pre>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Noch keine Abgaben.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>
