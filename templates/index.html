@@ -7,81 +7,137 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=adb,delete,download,image,mic,neurology,save,search" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 </head>
 <body>
     <div class="app-container">
         <header class="app-header">
             <div class="logo-container">
-                <span class="material-symbols-outlined">neurology</span>
+                <span class="material-symbols-outlined brain">neurology</span>
                 <h1>Intelligenter Lernassistent</h1>
             </div>
             <div class="header-actions">
+                <div class="user-info">
+                    <span class="user-type-badge {{ user_type }}">
+                        <span class="material-symbols-outlined">{% if user_type == 'teacher' %}person_2{% else %}person_raised_hand{% endif %}</span>
+                        {{ user_type.title() }}: {{ username }}
+                    </span>
+                </div>
                 <a href="/download" class="worksheet-link">
                     <span class="material-symbols-outlined">download</span>
                     <span>Arbeitsblatt downloaden</span>
                 </a>
+                <a href="/logout" class="logout-link">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span>Abmelden</span>
+                </a>
             </div>
         </header>
-        
-        <main class="chat-container">
-            <div class="chat-messages" id="chat-history">
-                <div class="welcome-message">
-                    <div class="bot-avatar">
-                        <span class="material-symbols-outlined">adb</span>
-                    </div>
-                    <div class="message-content">
-                        <div class="message-header">
-                            <span class="bot-name">KI-Assistent</span>
-                            <span class="message-time">Jetzt</span>
+
+        <div class="main-content">
+            <aside class="chat-sidebar">
+                <div class="sidebar-header">
+                    <h3>Chats</h3>
+                    <button id="new-chat-btn" class="new-chat-button">
+                        <span class="material-symbols-outlined">add</span>
+                        Neuer Chat
+                    </button>
+                </div>
+                <div class="chat-sessions" id="chat-sessions">
+                    {% for session in chat_sessions %}
+                        <div class="chat-session" data-session-id="{{ session.session_id }}" {% if session.session_id == current_session_id %}class="active"{% endif %}>
+                            <div class="session-info">
+                                <span class="session-title">Chat vom {{ session.first_message[:10] }}</span>
+                                <span class="session-date">{{ session.last_message[:16] }}</span>
+                            </div>
                         </div>
-                        <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                    {% endfor %}
+                </div>
+            </aside>
+
+            <main class="chat-container">
+                <div class="chat-messages" id="chat-history">
+                    <div class="welcome-message">
+                        <div class="bot-avatar">
+                            <span class="material-symbols-outlined">adb</span>
+                        </div>
+                        <div class="message-content">
+                            <div class="message-header">
+                                <span class="bot-name">KI-Assistent</span>
+                                <span class="message-time">Jetzt</span>
+                            </div>
+                            <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="input-container">
-                <div class="input-actions">
-                    <button id="record-button" class="record-button">
-                        <span class="material-symbols-outlined">mic</span>
-                        <span>Aufnahme starten</span>
-                    </button>
-                    <button id="image-upload-button" class="image-upload-button">
-                        <span class="material-symbols-outlined">image</span>
-                        <span>Bild hochladen</span>
-                    </button>
-                    <button id="clear-cache-button" class="clear-cache-button" style="display: none;">
-                        <span class="material-symbols-outlined">delete</span>
-                        <span>Cache leeren</span>
-                    </button>
-                    <input type="file" id="image-input" accept="image/*" style="display: none;">
-                </div>
-                <div id="image-preview" class="image-preview" style="display: none;">
-                    <img id="preview-image" src="" alt="Vorschau">
-                    <div class="image-actions">
-                        <button id="cache-image" class="cache-button">
-                            <span class="material-symbols-outlined">save</span>
-                            <span>Im Zwischenspeicher ablegen</span>
+                
+                <div class="input-container">
+                    <div class="input-actions">
+                        <button id="record-button" class="record-button">
+                            <span class="material-symbols-outlined">mic</span>
+                            <span>Aufnahme starten</span>
                         </button>
-                        <button id="analyze-image" class="analyze-button">
-                            <span class="material-symbols-outlined">search</span>
-                            <span>Bild analysieren</span>
+                        <button id="image-upload-button" class="image-upload-button">
+                            <span class="material-symbols-outlined">image</span>
+                            <span>Bild hochladen</span>
                         </button>
-                        <button id="remove-image" class="remove-button">
+                        <button id="clear-cache-button" class="clear-cache-button" style="display: none;">
                             <span class="material-symbols-outlined">delete</span>
+                            <span>Cache leeren</span>
                         </button>
+                        <input type="file" id="image-input" accept="image/*" style="display: none;">
+                    </div>
+                    <div id="image-preview" class="image-preview" style="display: none;">
+                        <img id="preview-image" src="" alt="Vorschau">
+                        <div class="image-actions">
+                            <button id="cache-image" class="cache-button">
+                                <span class="material-symbols-outlined">save</span>
+                                <span>Im Zwischenspeicher ablegen</span>
+                            </button>
+                            <button id="analyze-image" class="analyze-button">
+                                <span class="material-symbols-outlined">search</span>
+                                <span>Bild analysieren</span>
+                            </button>
+                            <button id="remove-image" class="remove-button">
+                                <span class="material-symbols-outlined">delete</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="cached-image-indicator" class="cached-image-indicator" style="display: none;">
+                        <span class="material-symbols-outlined">image</span>
+                        <span>Bild im Zwischenspeicher verfügbar</span>
+                    </div>
+                    <div class="input-hint">
+                        <span class="material-symbols-outlined">mic</span>
+                        <span>Klicke auf das Mikrofon um zu sprechen oder lade ein Bild zur Analyse hoch</span>
                     </div>
                 </div>
-                <div id="cached-image-indicator" class="cached-image-indicator" style="display: none;">
-                    <span class="material-symbols-outlined">image</span>
-                    <span>Bild im Zwischenspeicher verfügbar</span>
+            </main>
+
+            <aside class="assignments-sidebar">
+                <div class="sidebar-header">
+                    <h3>Aufgaben</h3>
+                    {% if user_type == 'teacher' %}
+                        <a href="{{ url_for('create_assignment_route') }}" class="new-chat-button">
+                            <span class="material-symbols-outlined">add</span>
+                            Neue Aufgabe
+                        </a>
+                    {% endif %}
                 </div>
-                <div class="input-hint">
-                    <span class="material-symbols-outlined">mic</span>
-                    <span>Klicke auf das Mikrofon um zu sprechen oder lade ein Bild zur Analyse hoch</span>
+                <div class="assignment-list" id="assignment-list">
+                    {% for assignment in assignments %}
+                        <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}" class="assignment-item">
+                            <div class="assignment-info">
+                                <span class="assignment-title">{{ assignment.title }}</span>
+                                <span class="assignment-date">{{ assignment.created_at[:10] }}</span>
+                            </div>
+                        </a>
+                    {% else %}
+                        <p>Keine Aufgaben gefunden.</p>
+                    {% endfor %}
                 </div>
-            </div>
-        </main>
+            </aside>
+        </div>
     </div>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

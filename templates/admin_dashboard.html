@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Intelligenter Lernassistent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-container">
+                <span class="material-symbols-outlined brain">neurology</span>
+                <h1>Intelligenter Lernassistent</h1>
+            </div>
+            <div class="header-actions">
+                <div class="user-info">
+                    <span class="user-type-badge it-admin">
+                        <span class="material-symbols-outlined">admin_panel_settings</span>
+                        IT-Admin: {{ username }}
+                    </span>
+                </div>
+                <a href="/logout" class="logout-link">
+                    <span class="material-symbols-outlined">logout</span>
+                    <span>Abmelden</span>
+                </a>
+            </div>
+        </header>
+
+        <div class="main-content-admin">
+            <main class="admin-container">
+                <h2>Admin Dashboard für {{ school }}</h2>
+
+                <div class="admin-section">
+                    <h3>Lehrer verwalten</h3>
+                    <form method="POST" action="{{ url_for('assign_teacher_route') }}">
+                        <div class="input-group">
+                            <label for="teacher_username">Lehrer-Benutzername</label>
+                            <input type="text" id="teacher_username" name="teacher_username" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="class_name_teacher">Klasse zuweisen</label>
+                            <input type="text" id="class_name_teacher" name="class_name" required>
+                        </div>
+                        <button type="submit" class="login-button">Zuweisen</button>
+                    </form>
+                    <ul class="user-list">
+                        {% for teacher in teachers %}
+                            <li>{{ teacher.username }} - Klasse: {{ teacher.class_name or 'Nicht zugewiesen' }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Schüler verwalten</h3>
+                    <form method="POST" action="{{ url_for('add_student_route') }}">
+                        <div class="input-group">
+                            <label for="student_username">Schüler-Benutzername</label>
+                            <input type="text" id="student_username" name="student_username" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="class_name_student">Klasse zuweisen</label>
+                            <input type="text" id="class_name_student" name="class_name" required>
+                        </div>
+                        <button type="submit" class="login-button">Zuweisen</button>
+                    </form>
+                    <ul class="user-list">
+                        {% for student in students %}
+                            <li>{{ student.username }} - Klasse: {{ student.class_name or 'Nicht zugewiesen' }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

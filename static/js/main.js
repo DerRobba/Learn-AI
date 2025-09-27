@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const removeButton = document.getElementById('remove-image');
     const clearCacheButton = document.getElementById('clear-cache-button');
     const cachedImageIndicator = document.getElementById('cached-image-indicator');
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const chatSessions = document.getElementById('chat-sessions');
 
     let uploadedImage = null;
     
@@ -58,10 +60,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateRecordButton(recording) {
         if (recording) {
-            recordButton.innerHTML = '<i class="fa-microphone"></i><span>Aufnahme stoppen</span>';
+            recordButton.innerHTML = '<span class="material-symbols-outlined">mic</span></i><span>Aufnahme stoppen</span>';
             recordButton.classList.add('recording');
         } else {
-            recordButton.innerHTML = '<i class="fa-microphone"></i><span>Aufnahme starten</span>';
+            recordButton.innerHTML = '<span class="material-symbols-outlined">mic</span></i><span>Aufnahme starten</span>';
             recordButton.classList.remove('recording');
         }
     }
@@ -102,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
         thinkingIndicator.className = 'message bot-message';
         thinkingIndicator.innerHTML = `
             <div class="bot-avatar">
-                <i class="fa-robot"></i>
+                <span class="material-symbols-outlined">adb</span>
             </div>
             <div class="message-content">
                 <div class="message-header">
@@ -144,47 +146,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    function addUserMessage(message) {
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message user-message';
-        messageElement.innerHTML = `
-            <div class="bot-avatar user-avatar">
-                <i class="fa-user"></i>
-            </div>
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="bot-name user-name">Du</span>
-                    <span class="message-time">${formatTime(new Date())}</span>
-                </div>
-                <p>${message}</p>
-            </div>
-        `;
-        chatHistory.appendChild(messageElement);
-        
-        // Scrollen zum Ende nach Hinzufügen der Nachricht
-        setTimeout(scrollToBottom, 100);
-    }
-    
-    function addBotMessage(message) {
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message bot-message';
-        messageElement.innerHTML = `
-            <div class="bot-avatar">
-                <i class="fa-robot"></i>
-            </div>
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="bot-name">KI-Assistent</span>
-                    <span class="message-time">${formatTime(new Date())}</span>
-                </div>
-                <p>${message}</p>
-            </div>
-        `;
-        chatHistory.appendChild(messageElement);
-        
-        // Scrollen zum Ende nach Hinzufügen der Nachricht
-        setTimeout(scrollToBottom, 100);
-    }
     
     function speak(text) {
         speechSynthesis.cancel();
@@ -250,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
         thinkingIndicator.className = 'message bot-message';
         thinkingIndicator.innerHTML = `
             <div class="bot-avatar">
-                <i class="fa-robot"></i>
+                <span class="material-symbols-outlined">adb</span>
             </div>
             <div class="message-content">
                 <div class="message-header">
@@ -302,7 +263,7 @@ document.addEventListener('DOMContentLoaded', function() {
         thinkingIndicator.className = 'message bot-message';
         thinkingIndicator.innerHTML = `
             <div class="bot-avatar">
-                <i class="fa-robot"></i>
+                <span class="material-symbols-outlined">adb</span>
             </div>
             <div class="message-content">
                 <div class="message-header">
@@ -367,4 +328,155 @@ document.addEventListener('DOMContentLoaded', function() {
             addBotMessage("Es gab ein Problem beim Leeren des Zwischenspeichers.");
         });
     }
+
+    // Chat session management
+    function loadChatHistory() {
+        fetch('/get-chat-history')
+        .then(response => response.json())
+        .then(data => {
+            if (data.chat_history && data.chat_history.length > 0) {
+                // Clear welcome message
+                chatHistory.innerHTML = '';
+
+                data.chat_history.forEach(msg => {
+                    if (msg.message_type === 'user') {
+                        addUserMessage(msg.content, msg.created_at);
+                    } else if (msg.message_type === 'assistant') {
+                        addBotMessage(msg.content, msg.created_at);
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading chat history:', error);
+        });
+    }
+
+    function addUserMessage(message, timestamp = null) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message user-message';
+        const time = timestamp ? new Date(timestamp) : new Date();
+        messageElement.innerHTML = `
+            <div class="bot-avatar user-avatar">
+                <span class="material-symbols-outlined">person</span>
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="bot-name user-name">Du</span>
+                    <span class="message-time">${formatTime(time)}</span>
+                </div>
+                <p>${message}</p>
+            </div>
+        `;
+        chatHistory.appendChild(messageElement);
+
+        // Scrollen zum Ende nach Hinzufügen der Nachricht
+        setTimeout(scrollToBottom, 100);
+    }
+
+    function addBotMessage(message, timestamp = null) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message bot-message';
+        const time = timestamp ? new Date(timestamp) : new Date();
+        messageElement.innerHTML = `
+            <div class="bot-avatar">
+                <span class="material-symbols-outlined">adb</span>
+            </div>
+            <div class="message-content">
+                <div class="message-header">
+                    <span class="bot-name">KI-Assistent</span>
+                    <span class="message-time">${formatTime(time)}</span>
+                </div>
+                <p>${message}</p>
+            </div>
+        `;
+        chatHistory.appendChild(messageElement);
+
+        // Scrollen zum Ende nach Hinzufügen der Nachricht
+        setTimeout(scrollToBottom, 100);
+    }
+
+    newChatBtn.addEventListener('click', () => {
+        fetch('/new-chat', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Clear chat history
+            chatHistory.innerHTML = `
+                <div class="welcome-message">
+                    <div class="bot-avatar">
+                        <span class="material-symbols-outlined">adb</span>
+                    </div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="bot-name">KI-Assistent</span>
+                            <span class="message-time">Jetzt</span>
+                        </div>
+                        <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                    </div>
+                </div>
+            `;
+
+            // Reload page to update sidebar
+            location.reload();
+        })
+        .catch(error => {
+            console.error('Error creating new chat:', error);
+        });
+    });
+
+    // Load chat session when clicked
+    chatSessions.addEventListener('click', (e) => {
+        const sessionElement = e.target.closest('.chat-session');
+        if (sessionElement) {
+            const sessionId = sessionElement.dataset.sessionId;
+
+            fetch(`/load-chat/${sessionId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Clear current chat
+                chatHistory.innerHTML = '';
+
+                // Load chat history
+                if (data.chat_history && data.chat_history.length > 0) {
+                    data.chat_history.forEach(msg => {
+                        if (msg.message_type === 'user') {
+                            addUserMessage(msg.content, msg.created_at);
+                        } else if (msg.message_type === 'assistant') {
+                            addBotMessage(msg.content, msg.created_at);
+                        }
+                    });
+                } else {
+                    // Show welcome message if no history
+                    chatHistory.innerHTML = `
+                        <div class="welcome-message">
+                            <div class="bot-avatar">
+                                <span class="material-symbols-outlined">adb</span>
+                            </div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="bot-name">KI-Assistent</span>
+                                    <span class="message-time">Jetzt</span>
+                                </div>
+                                <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Update active session
+                document.querySelectorAll('.chat-session').forEach(s => s.classList.remove('active'));
+                sessionElement.classList.add('active');
+            })
+            .catch(error => {
+                console.error('Error loading chat session:', error);
+            });
+        }
+    });
+
+    // Load current chat history on page load
+    loadChatHistory();
 });
