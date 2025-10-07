@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, create_assignment, get_assignments_for_class, get_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school
 
 load_dotenv()
 
@@ -72,11 +72,8 @@ def register_post():
     user_type = request.form.get('user_type')
     school = request.form.get('school')
 
-    if not username or not password or not user_type:
+    if not username or not password or not user_type or not school:
         return render_template('register.html', error='Alle Felder sind erforderlich.')
-
-    if user_type == 'it-admin' and not school:
-        return render_template('register.html', error='Schule ist für IT-Admins erforderlich.')
 
     if not create_user(username, password, user_type, school):
         if user_type == 'it-admin':
@@ -90,6 +87,38 @@ def register_post():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/delete-chat/<session_id>', methods=['POST'])
+def delete_chat_route(session_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    delete_chat_session(user_id, session_id)
+
+    # If the deleted chat is the current one, clear it from session
+    if session.get('chat_session_id') == session_id:
+        session.pop('chat_session_id', None)
+
+    return redirect(url_for('index'))
+
+@app.route('/rename-chat/<session_id>', methods=['POST'])
+def rename_chat_route(session_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+
+    user_id = session['user_id']
+    data = request.get_json()
+    new_name = data.get('new_name')
+
+    if not new_name:
+        return jsonify({'error': 'Neuer Name ist erforderlich'}), 400
+
+    if rename_chat_session(user_id, session_id, new_name):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Fehler beim Umbenennen des Chats'}), 500
 
 @app.route('/new-chat', methods=['POST'])
 def new_chat():
@@ -156,9 +185,9 @@ def index():
     class_name = session.get('class_name')
     if class_name:
         if user_type == 'teacher':
-            assignments = get_assignments_for_class(class_name)
+            assignments = get_assignments_for_class(class_name, session.get('school'))
         elif user_type == 'student':
-            assignments = get_assignments_for_class(class_name)
+            assignments = get_assignments_for_class(class_name, session.get('school'))
 
     return render_template('index.html',
                          user_type=user_type,
@@ -404,12 +433,13 @@ def create_assignment_route():
         title = request.form.get('title')
         description = request.form.get('description')
         class_name = session['class_name']
+        school = session['school']
         created_by = session['user_id']
 
         if not title or not description:
             return render_template('create_assignment.html', error='Titel und Beschreibung sind erforderlich.')
 
-        create_assignment(title, description, created_by, class_name)
+        create_assignment(title, description, created_by, class_name, school)
         return redirect(url_for('index'))
 
     return render_template('create_assignment.html')
@@ -440,6 +470,14 @@ def view_assignment(assignment_id):
         submissions = get_submissions_for_assignment(assignment_id)
 
     return render_template('view_assignment.html', assignment=assignment, submission=submission, submissions=submissions, user_type=session.get('user_type'))
+
+@app.route('/delete-assignment/<int:assignment_id>', methods=['POST'])
+def delete_assignment_route(assignment_id):
+    if 'user_id' not in session or session['user_type'] != 'teacher':
+        return redirect(url_for('login'))
+
+    delete_assignment(assignment_id)
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)

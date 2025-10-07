@@ -1,0 +1,32 @@
+.context-menu {
+    display: none;
+    position: absolute;
+    z-index: 1000;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    font-family: 'Inter', sans-serif;
+}
+
+.context-menu ul {
+    list-style: none;
+    padding: 5px 0;
+    margin: 0;
+}
+
+.context-menu li {
+    padding: 8px 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.context-menu li:hover {
+    background-color: #f0f0f0;
+}
+
+.context-menu li .material-symbols-outlined {
+    margin-right: 10px;
+    font-size: 18px;
+}

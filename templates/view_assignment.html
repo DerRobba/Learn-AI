@@ -4,64 +4,206 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ assignment.title }} - Intelligenter Lernassistent</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes blob {
+            0% {
+                transform: translate(0px, 0px) scale(1);
+            }
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+            100% {
+                transform: translate(0px, 0px) scale(1);
+            }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+            animation-delay: 4s;
+        }
+    </style>
 </head>
-<body class="centered-page">
-    <header class="app-header">
-        <div class="logo-container">
-            <span class="material-symbols-outlined brain">neurology</span>
-            <h1>Intelligenter Lernassistent</h1>
-        </div>
-        <div class="header-actions">
-            <a href="{{ url_for('index') }}" class="logout-link">
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400">
+    <!-- Header -->
+    <header class="bg-white/95 backdrop-blur-xl shadow-lg border-b border-white/20">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-xl">neurology</span>
+                </div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
+                    Intelligenter Lernassistent
+                </h1>
+            </div>
+
+            <!-- Back Button -->
+            <a href="{{ url_for('index') }}" class="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors duration-300">
                 <span class="material-symbols-outlined">arrow_back</span>
-                <span>Zurück</span>
+                <span class="font-medium">Zurück</span>
             </a>
         </div>
     </header>
 
-    <div class="assignment-card">
-        <h2>{{ assignment.title }}</h2><br>
-        <p>{{ assignment.description }}</p>
-
-        <hr>
-        <br>
-        {% if user_type == 'student' %}
-            <h3>Deine Abgabe</h3><br>
-            {% if submission %}
-                <div class="submission-view">
-                    <p><strong>Abgegeben am:</strong> {{ submission.submitted_at }}</p>
-                    <p><strong>Inhalt:</strong></p>
-                    <pre>{{ submission.content }}</pre>
-                </div>
-            {% else %}
-                <form method="POST">
-                    <div class="input-group">
-                        <label for="submission_content">Lösung</label>
-                        <textarea id="submission_content" name="submission_content" rows="10" required></textarea>
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto p-6">
+        <!-- Assignment Card -->
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 mb-6 card-animation">
+            <!-- Assignment Header -->
+            <div class="mb-8">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-xl">assignment</span>
                     </div>
-                    <button type="submit" class="login-button">Abgeben</button>
-                </form>
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-900">{{ assignment.title }}</h2>
+                        <p class="text-gray-600 mt-1">Aufgabe erstellt am {{ assignment.created_at[:10] }}</p>
+                    </div>
+                </div>
+
+                <!-- Assignment Description -->
+                <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-3 flex items-center space-x-2">
+                        <span class="material-symbols-outlined text-blue-600">description</span>
+                        <span>Aufgabenbeschreibung</span>
+                    </h3>
+                    <div class="text-gray-700 leading-relaxed whitespace-pre-wrap">{{ assignment.description }}</div>
+                </div>
+            </div>
+
+            <!-- Student Section -->
+            {% if user_type == 'student' %}
+                <div class="border-t border-gray-200 pt-8 card-animation" style="animation-delay: 0.2s;">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
+                        <span class="material-symbols-outlined text-green-600">edit_note</span>
+                        <span>Deine Abgabe</span>
+                    </h3>
+
+                    {% if submission %}
+                        <!-- Submitted Solution -->
+                        <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
+                            <div class="flex items-center space-x-2 mb-4">
+                                <span class="material-symbols-outlined text-green-600">check_circle</span>
+                                <span class="font-semibold text-green-800">Erfolgreich abgegeben</span>
+                            </div>
+                            <p class="text-gray-700 mb-4">
+                                <strong>Abgegeben am:</strong> {{ submission.submitted_at }}
+                            </p>
+                            <div class="bg-white/80 rounded-xl p-4 border border-green-100">
+                                <h4 class="font-semibold text-gray-900 mb-2">Deine Lösung:</h4>
+                                <pre class="whitespace-pre-wrap text-gray-800 text-sm leading-relaxed">{{ submission.content }}</pre>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- Submission Form -->
+                        <div class="bg-gradient-to-r from-gray-50 to-slate-50 rounded-2xl p-6 border border-gray-200">
+                            <form method="POST" class="space-y-6">
+                                <div>
+                                    <label for="submission_content" class="block text-lg font-semibold text-gray-900 mb-3">
+                                        Deine Lösung
+                                    </label>
+                                    <textarea
+                                        id="submission_content"
+                                        name="submission_content"
+                                        rows="12"
+                                        required
+                                        class="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 resize-y text-gray-900 placeholder-gray-400"
+                                        placeholder="Schreibe hier deine Lösung..."
+                                    ></textarea>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    class="w-full md:w-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 px-8 rounded-xl hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold"
+                                >
+                                    <span class="material-symbols-outlined">send</span>
+                                    <span>Abgabe einreichen</span>
+                                </button>
+                            </form>
+                        </div>
+                    {% endif %}
+                </div>
             {% endif %}
-        {% elif user_type == 'teacher' %}
-            <br><h3>Abgaben</h3>
-            {% if submissions %}
-                <ul class="submission-list">
-                    {% for sub in submissions %}
-                        <li class="submission-item">
-                            <p><strong>Schüler:</strong> {{ sub.student_username }}</p>
-                            <p><strong>Abgegeben am:</strong> {{ sub.submitted_at }}</p>
-                            <pre>{{ sub.content }}</pre>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p>Noch keine Abgaben.</p>
+
+            <!-- Teacher Section -->
+            {% if user_type == 'teacher' %}
+                <div class="border-t border-gray-200 pt-8 card-animation" style="animation-delay: 0.2s;">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
+                        <span class="material-symbols-outlined text-purple-600">group</span>
+                        <span>Schüler-Abgaben</span>
+                    </h3>
+
+                    {% if submissions %}
+                        <div class="space-y-6">
+                            {% for sub in submissions %}
+                                <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl p-6 border border-purple-200 card-animation" style="animation-delay: {{ 0.4 + loop.index * 0.2 }}s;">
+                                    <!-- Student Info -->
+                                    <div class="flex items-center space-x-3 mb-4">
+                                        <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center">
+                                            <span class="material-symbols-outlined text-white text-sm">person</span>
+                                        </div>
+                                        <div>
+                                            <h4 class="font-semibold text-gray-900">{{ sub.student_username }}</h4>
+                                            <p class="text-sm text-gray-600">Abgegeben am {{ sub.submitted_at }}</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Submission Content -->
+                                    <div class="bg-white/80 rounded-xl p-4 border border-purple-100">
+                                        <h5 class="font-medium text-gray-900 mb-3">Abgabe:</h5>
+                                        <pre class="whitespace-pre-wrap text-gray-800 text-sm leading-relaxed">{{ sub.content }}</pre>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-12">
+                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="material-symbols-outlined text-gray-400 text-2xl">inbox</span>
+                            </div>
+                            <h4 class="text-lg font-semibold text-gray-900 mb-2">Noch keine Abgaben</h4>
+                            <p class="text-gray-600">Bisher haben noch keine Schüler diese Aufgabe bearbeitet.</p>
+                        </div>
+                    {% endif %}
+                </div>
             {% endif %}
-        {% endif %}
+        </div>
+    </div>
+
+    <!-- Decorative Elements -->
+    <div class="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden -z-10">
+        <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+        <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+        <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
     </div>
 </body>
 </html>
