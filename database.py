@@ -29,10 +29,18 @@ def init_database():
             description TEXT NOT NULL,
             created_by INTEGER NOT NULL,
             class_name TEXT NOT NULL,
+            school TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (created_by) REFERENCES users (id)
         )
     ''')
+
+    # Add school column to assignments table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE assignments ADD COLUMN school TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            raise
 
     # Create submissions table
     cursor.execute('''
@@ -53,6 +61,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             session_id TEXT NOT NULL,
+            session_name TEXT,
             message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'system')),
             content TEXT NOT NULL,
             image_data TEXT,
@@ -211,7 +220,11 @@ def get_user_chat_sessions(user_id):
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT DISTINCT session_id, MIN(created_at) as first_message, MAX(created_at) as last_message
+        SELECT 
+            session_id, 
+            MIN(created_at) as first_message, 
+            MAX(created_at) as last_message,
+            COALESCE(session_name, content) as session_name
         FROM chat_history
         WHERE user_id = ?
         GROUP BY session_id
@@ -221,16 +234,15 @@ def get_user_chat_sessions(user_id):
     sessions = cursor.fetchall()
     conn.close()
 
-    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2]} for s in sessions]
+    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3]} for s in sessions]
 
-def create_assignment(title, description, created_by, class_name):
-    """Create a new assignment"""
+def delete_chat_session(user_id, session_id):
+    """Delete a chat session for a user"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute('INSERT INTO assignments (title, description, created_by, class_name) VALUES (?, ?, ?, ?)',
-                      (title, description, created_by, class_name))
+        cursor.execute('DELETE FROM chat_history WHERE user_id = ? AND session_id = ?', (user_id, session_id))
         conn.commit()
         return True
     except sqlite3.Error as e:
@@ -239,13 +251,44 @@ def create_assignment(title, description, created_by, class_name):
     finally:
         conn.close()
 
-def get_assignments_for_class(class_name):
-    """Get all assignments for a given class"""
+def rename_chat_session(user_id, session_id, new_name):
+    """Rename a chat session for a user"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, title, description, created_at FROM assignments WHERE class_name = ? ORDER BY created_at DESC',
-                  (class_name,))
+    try:
+        cursor.execute('UPDATE chat_history SET session_name = ? WHERE user_id = ? AND session_id = ?', (new_name, user_id, session_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def create_assignment(title, description, created_by, class_name, school):
+    """Create a new assignment"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO assignments (title, description, created_by, class_name, school) VALUES (?, ?, ?, ?, ?)',
+                      (title, description, created_by, class_name, school))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_assignments_for_class(class_name, school):
+    """Get all assignments for a given class and school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, title, description, created_at FROM assignments WHERE class_name = ? AND school = ? ORDER BY created_at DESC',
+                  (class_name, school))
     assignments = cursor.fetchall()
     conn.close()
 
@@ -264,6 +307,26 @@ def get_assignment(assignment_id):
     if assignment:
         return {'id': assignment[0], 'title': assignment[1], 'description': assignment[2], 'created_at': assignment[3]}
     return None
+
+def delete_assignment(assignment_id):
+    """Delete an assignment and all its submissions"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # First, delete all submissions for this assignment
+        cursor.execute('DELETE FROM submissions WHERE assignment_id = ?', (assignment_id,))
+
+        # Then, delete the assignment itself
+        cursor.execute('DELETE FROM assignments WHERE id = ?', (assignment_id,))
+
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
 
 def create_submission(assignment_id, student_id, content):
     """Create a new submission"""

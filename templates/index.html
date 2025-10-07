@@ -4,141 +4,278 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intelligenter Lernassistent</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Burger Menu Animation */
+        #burger-menu-btn.active .burger-line:nth-child(1) {
+            transform: rotate(45deg) translate(6px, 6px);
+        }
+        #burger-menu-btn.active .burger-line:nth-child(2) {
+            opacity: 0;
+            transform: scale(0);
+        }
+        #burger-menu-btn.active .burger-line:nth-child(3) {
+            transform: rotate(-45deg) translate(6px, -6px);
+        }
+
+        /* Tasks Button Active State */
+        #tasks-menu-btn.active {
+            background-color: rgb(147 51 234);
+            border-color: rgb(147 51 234);
+            transform: scale(1.05);
+        }
+        #tasks-menu-btn.active .material-symbols-outlined {
+            color: white;
+        }
+
+        /* Sidebar animations */
+        .sidebar-enter {
+            transform: translateX(-100%);
+        }
+        .sidebar-enter-active {
+            transform: translateX(0);
+            transition: transform 0.3s ease-in-out;
+        }
+
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .chat-message {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        .sidebar-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+    </style>
 </head>
-<body>
-    <div class="app-container">
-        <header class="app-header">
-            <div class="logo-container">
-                <span class="material-symbols-outlined brain">neurology</span>
-                <h1>Intelligenter Lernassistent</h1>
-            </div>
-            <div class="header-actions">
-                <div class="user-info">
-                    <span class="user-type-badge {{ user_type }}">
-                        <span class="material-symbols-outlined">{% if user_type == 'teacher' %}person_2{% else %}person_raised_hand{% endif %}</span>
-                        {{ user_type.title() }}: {{ username }}
-                    </span>
+<body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen">
+    <!-- Mobile Overlay -->
+    <div id="mobile-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden"></div>
+
+    <div class="flex flex-col h-screen overflow-hidden">
+        <!-- Header -->
+        <header class="bg-white shadow-lg px-4 py-3 flex items-center justify-between relative z-40">
+            <!-- Left: Sidebar Menu -->
+            <button id="sidebar-menu-btn" class="flex flex-col justify-center items-center w-8 h-8 space-y-1 hover:scale-110 transition-transform duration-300 md:hidden">
+                <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
+                <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
+                <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
+            </button>
+
+            <!-- Center: Logo -->
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-lg">neurology</span>
                 </div>
-                <a href="/download" class="worksheet-link">
-                    <span class="material-symbols-outlined">download</span>
-                    <span>Arbeitsblatt downloaden</span>
+                <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
+                    Intelligenter Lernassistent
+                </h1>
+                <h1 class="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent sm:hidden">
+                    KI Assistant
+                </h1>
+            </div>
+
+            <!-- Right: Actions -->
+            <div class="flex items-center space-x-2">
+
+
+                <!-- User Badge -->
+                <div class="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-1">
+                    <div class="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-green-500 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-sm">
+                            {% if user_type == 'teacher' %}person_2{% else %}person_raised_hand{% endif %}
+                        </span>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700 hidden sm:block">{{ user_type.title() }}: {{ username }}</span>
+                </div>
+
+                <!-- Desktop Download Button -->
+                <a href="/download" class="hidden md:flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors duration-300">
+                    <span class="material-symbols-outlined text-sm">download</span>
+                    <span class="text-sm font-medium">Download</span>
                 </a>
-                <a href="/logout" class="logout-link">
-                    <span class="material-symbols-outlined">logout</span>
-                    <span>Abmelden</span>
+
+                <!-- Logout Button -->
+                <a href="/logout" class="flex items-center justify-center w-10 h-10 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
+                    <span class="material-symbols-outlined text-lg">logout</span>
                 </a>
             </div>
         </header>
 
-        <div class="main-content">
-            <aside class="chat-sidebar">
-                <div class="sidebar-header">
-                    <h3>Chats</h3>
-                    <button id="new-chat-btn" class="new-chat-button">
-                        <span class="material-symbols-outlined">add</span>
-                        Neuer Chat
-                    </button>
-                </div>
-                <div class="chat-sessions" id="chat-sessions">
-                    {% for session in chat_sessions %}
-                        <div class="chat-session" data-session-id="{{ session.session_id }}" {% if session.session_id == current_session_id %}class="active"{% endif %}>
-                            <div class="session-info">
-                                <span class="session-title">Chat vom {{ session.first_message[:10] }}</span>
-                                <span class="session-date">{{ session.last_message[:16] }}</span>
-                            </div>
+        <!-- Main Content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Unified Sidebar -->
+            <aside id="sidebar" class="w-80 bg-white shadow-xl transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out fixed md:static top-0 md:top-auto bottom-0 md:bottom-auto left-0 z-50 flex flex-col sidebar-animation">
+                <!-- Sidebar Header -->
+                <div class="p-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <button id="chats-tab-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700">Chats</button>
+                            <button id="assignments-tab-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100">Aufgaben</button>
                         </div>
-                    {% endfor %}
+                        <button id="close-sidebar" class="md:hidden flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors duration-300" style="touch-action: manipulation;">
+                            <span class="material-symbols-outlined text-lg">close</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sidebar Content -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                    <!-- Chat Sessions -->
+                    <div id="chat-sessions-container" class="space-y-2">
+                        {% for session in chat_sessions %}
+                            <div class="chat-session p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-purple-200 cursor-pointer transition-all duration-300 active:bg-purple-50 {% if session.session_id == current_session_id %}bg-purple-100 border-purple-300{% endif %}"
+                                 data-session-id="{{ session.session_id }}"
+                                 style="touch-action: manipulation;">
+                                <div class="flex flex-col space-y-1 pointer-events-none">
+                                    <span class="session-title text-sm font-medium text-gray-800 truncate">{{ session.session_name }}</span>
+                                    <span class="session-date text-xs text-gray-500">{{ session.last_message[:16] }}</span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Assignments List -->
+                    <div id="assignment-list-container" class="space-y-2 hidden">
+                        {% if user_type == 'teacher' %}
+                            <a href="{{ url_for('create_assignment_route') }}" class="flex items-center space-x-2 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors duration-300 mb-2" style="touch-action: manipulation;">
+                                <span class="material-symbols-outlined text-sm">add</span>
+                                <span class="text-sm font-medium">Neue Aufgabe</span>
+                            </a>
+                        {% endif %}
+                        {% for assignment in assignments %}
+                            <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}"
+                               class="assignment-item block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-green-200 transition-all duration-300 active:bg-green-50"
+                               style="touch-action: manipulation;">
+                                <div class="flex flex-col space-y-1">
+                                    <span class="assignment-title text-sm font-medium text-gray-800 truncate">{{ assignment.title }}</span>
+                                    <span class="assignment-date text-xs text-gray-500">{{ assignment.created_at[:10] }}</span>
+                                </div>
+                            </a>
+                        {% else %}
+                            <div class="p-4 text-center text-gray-500 text-sm">
+                                Keine Aufgaben gefunden.
+                            </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </aside>
 
-            <main class="chat-container">
-                <div class="chat-messages" id="chat-history">
-                    <div class="welcome-message">
-                        <div class="bot-avatar">
-                            <span class="material-symbols-outlined">adb</span>
-                        </div>
-                        <div class="message-content">
-                            <div class="message-header">
-                                <span class="bot-name">KI-Assistent</span>
-                                <span class="message-time">Jetzt</span>
+            <!-- Main Chat Container -->
+            <main class="flex-1 flex flex-col bg-white md:bg-transparent">
+                <!-- Chat Messages -->
+                <div class="flex-1 overflow-hidden">
+                    <div id="chat-history" class="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
+                        <!-- Welcome Message -->
+                        <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message">
+                            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span class="material-symbols-outlined text-white text-lg">adb</span>
                             </div>
-                            <p>Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-2 mb-1">
+                                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
+                                    <span class="text-xs text-gray-500">Jetzt</span>
+                                </div>
+                                <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-                
-                <div class="input-container">
-                    <div class="input-actions">
-                        <button id="record-button" class="record-button">
-                            <span class="material-symbols-outlined">mic</span>
-                            <span>Aufnahme starten</span>
-                        </button>
-                        <button id="image-upload-button" class="image-upload-button">
-                            <span class="material-symbols-outlined">image</span>
-                            <span>Bild hochladen</span>
-                        </button>
-                        <button id="clear-cache-button" class="clear-cache-button" style="display: none;">
-                            <span class="material-symbols-outlined">delete</span>
-                            <span>Cache leeren</span>
-                        </button>
-                        <input type="file" id="image-input" accept="image/*" style="display: none;">
-                    </div>
-                    <div id="image-preview" class="image-preview" style="display: none;">
-                        <img id="preview-image" src="" alt="Vorschau">
-                        <div class="image-actions">
-                            <button id="cache-image" class="cache-button">
-                                <span class="material-symbols-outlined">save</span>
-                                <span>Im Zwischenspeicher ablegen</span>
+
+                <!-- Input Container -->
+                <div class="p-4 md:p-6 bg-white border-t border-gray-200 md:border-t-0">
+                    <div class="relative">
+                        <textarea id="chat-input" class="w-full pl-4 pr-16 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" placeholder="Schreibe eine Nachricht..." rows="1"></textarea>
+                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                            <button id="image-upload-button" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-200 transition-colors duration-300">
+                                <span class="material-symbols-outlined text-gray-600">image</span>
                             </button>
-                            <button id="analyze-image" class="analyze-button">
-                                <span class="material-symbols-outlined">search</span>
-                                <span>Bild analysieren</span>
-                            </button>
-                            <button id="remove-image" class="remove-button">
-                                <span class="material-symbols-outlined">delete</span>
+                            <button id="record-button" class="flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                <span class="material-symbols-outlined">mic</span>
                             </button>
                         </div>
                     </div>
-                    <div id="cached-image-indicator" class="cached-image-indicator" style="display: none;">
-                        <span class="material-symbols-outlined">image</span>
-                        <span>Bild im Zwischenspeicher verfügbar</span>
+                    <input type="file" id="image-input" accept="image/*" class="hidden">
+                    <!-- Image Preview -->
+                    <div id="image-preview" class="hidden mt-4 p-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                        <img id="preview-image" src="" alt="Vorschau" class="max-w-full h-40 object-contain mx-auto rounded-lg mb-3">
+                        <div class="flex justify-center space-x-2">
+                            <button id="cache-image" class="flex items-center space-x-1 bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors duration-300">
+                                <span class="material-symbols-outlined text-sm">save</span>
+                                <span class="text-sm">Cache</span>
+                            </button>
+                            <button id="analyze-image" class="flex items-center space-x-1 bg-purple-500 text-white px-3 py-1 rounded-lg hover:bg-purple-600 transition-colors duration-300">
+                                <span class="material-symbols-outlined text-sm">search</span>
+                                <span class="text-sm">Analysieren</span>
+                            </button>
+                            <button id="remove-image" class="flex items-center justify-center w-8 h-8 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="input-hint">
-                        <span class="material-symbols-outlined">mic</span>
-                        <span>Klicke auf das Mikrofon um zu sprechen oder lade ein Bild zur Analyse hoch</span>
+                    <!-- Cached Image Indicator -->
+                    <div id="cached-image-indicator" class="hidden mt-4 flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                        <span class="material-symbols-outlined text-blue-600">image</span>
+                        <span class="text-sm text-blue-700 font-medium">Bild im Zwischenspeicher verfügbar</span>
                     </div>
                 </div>
             </main>
 
-            <aside class="assignments-sidebar">
-                <div class="sidebar-header">
-                    <h3>Aufgaben</h3>
-                    {% if user_type == 'teacher' %}
-                        <a href="{{ url_for('create_assignment_route') }}" class="new-chat-button">
-                            <span class="material-symbols-outlined">add</span>
-                            Neue Aufgabe
-                        </a>
-                    {% endif %}
-                </div>
-                <div class="assignment-list" id="assignment-list">
-                    {% for assignment in assignments %}
-                        <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}" class="assignment-item">
-                            <div class="assignment-info">
-                                <span class="assignment-title">{{ assignment.title }}</span>
-                                <span class="assignment-date">{{ assignment.created_at[:10] }}</span>
-                            </div>
-                        </a>
-                    {% else %}
-                        <p>Keine Aufgaben gefunden.</p>
-                    {% endfor %}
-                </div>
-            </aside>
+
         </div>
     </div>
+
+    <!-- Context Menus -->
+    <div id="chat-context-menu" class="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 hidden">
+        <button id="rename-chat" class="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <span class="material-symbols-outlined text-sm">edit</span>
+            <span>Umbenennen</span>
+        </button>
+        <button id="delete-chat" class="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+            <span class="material-symbols-outlined text-sm">delete</span>
+            <span>Löschen</span>
+        </button>
+    </div>
+
+    <div id="assignment-context-menu" class="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 hidden">
+        <button id="delete-assignment" class="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+            <span class="material-symbols-outlined text-sm">delete</span>
+            <span>Löschen</span>
+        </button>
+    </div>
+
+    <input type="hidden" id="user-type" value="{{ user_type }}">
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

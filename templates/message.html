@@ -4,25 +4,86 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - Intelligenter Lernassistent</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-card-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes blob {
+            0% {
+                transform: translate(0px, 0px) scale(1);
+            }
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+            100% {
+                transform: translate(0px, 0px) scale(1);
+            }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+            animation-delay: 4s;
+        }
+    </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="logo-container">
-                <span class="material-symbols-outlined">adb</span>
-                <h1>Intelligenter Lernassistent</h1>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Message Card -->
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 text-center message-card-animation">
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl mb-4 shadow-lg">
+                    <span class="material-symbols-outlined text-white text-2xl">adb</span>
+                </div>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
+                    Intelligenter Lernassistent
+                </h1>
             </div>
 
-            <h2>{{ title }}</h2>
-            <p>{{ message }}</p>
+            <!-- Message Title -->
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">{{ title }}</h2>
 
-            <div class="register-link">
-                <p><a href="{{ url_for('logout') }}">Abmelden</a></p>
-            </div>
+            <!-- Message Content -->
+            <p class="text-gray-600 mb-8">{{ message }}</p>
+
+            <!-- Logout Button -->
+            <a href="{{ url_for('logout') }}" class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 px-6 rounded-xl hover:from-purple-700 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold">
+                <span class="material-symbols-outlined">logout</span>
+                <span>Abmelden</span>
+            </a>
+        </div>
+
+        <!-- Decorative Elements -->
+        <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+            <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+            <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+            <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
         </div>
     </div>
 </body>

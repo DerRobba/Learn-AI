@@ -4,55 +4,161 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anmeldung - Intelligenter Lernassistent</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .form-field {
+            animation: slideIn 0.5s ease-out forwards;
+            opacity: 0;
+        }
+
+        .form-field:nth-child(1) {
+            animation-delay: 0.2s;
+        }
+
+        .form-field:nth-child(2) {
+            animation-delay: 0.4s;
+        }
+
+        .login-card-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes blob {
+            0% {
+                transform: translate(0px, 0px) scale(1);
+            }
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+            100% {
+                transform: translate(0px, 0px) scale(1);
+            }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+            animation-delay: 4s;
+        }
+    </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="logo-container">
-                <span class="material-symbols-outlined">adb</span>
-                <h1>Intelligenter Lernassistent</h1>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Login Card -->
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 login-card-animation">
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl mb-4 shadow-lg">
+                    <span class="material-symbols-outlined text-white text-2xl">adb</span>
+                </div>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
+                    Intelligenter Lernassistent
+                </h1>
+                <p class="text-gray-600 mt-2">Melde dich in deinem Konto an</p>
             </div>
 
-            <h2>Anmeldung</h2>
-
+            <!-- Error Message -->
             {% if error %}
-            <div class="error-message">
-                <span class="material-symbols-outlined">warning</span>
-                {{ error }}
+            <div class="mb-6 flex items-center space-x-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                <span class="material-symbols-outlined text-red-500">warning</span>
+                <span class="text-sm font-medium">{{ error }}</span>
             </div>
             {% endif %}
 
-            <form method="POST">
-                <div class="input-group">
-                    <label for="username">
-                        <span class="material-symbols-outlined">person_2</span>
-                        Benutzername
+            <!-- Login Form -->
+            <form method="POST" class="space-y-6">
+                <!-- Username Field -->
+                <div class="space-y-2 form-field">
+                    <label for="username" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                        <span class="material-symbols-outlined text-purple-600">person</span>
+                        <span>Benutzername</span>
                     </label>
-                    <input type="text" id="username" name="username" required>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
+                        placeholder="Dein Benutzername"
+                    >
                 </div>
 
-                <div class="input-group">
-                    <label for="password">
-                        <span class="material-symbols-outlined">lock</span>
-                        Passwort
+                <!-- Password Field -->
+                <div class="space-y-2 form-field">
+                    <label for="password" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                        <span class="material-symbols-outlined text-purple-600">lock</span>
+                        <span>Passwort</span>
                     </label>
-                    <input type="password" id="password" name="password" required>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
+                        placeholder="Dein Passwort"
+                    >
                 </div>
 
-
-                <button type="submit" class="login-button">
+                <!-- Login Button -->
+                <button
+                    type="submit"
+                    class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 px-6 rounded-xl hover:from-purple-700 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold"
+                >
                     <span class="material-symbols-outlined">login</span>
-                    Anmelden
+                    <span>Anmelden</span>
                 </button>
             </form>
 
-            <div class="register-link">
-                <p>Noch kein Konto? <a href="{{ url_for('register') }}">Hier registrieren</a></p>
+            <!-- Register Link -->
+            <div class="text-center mt-8 pt-6 border-t border-gray-200">
+                <p class="text-gray-600 text-sm">
+                    Noch kein Konto?
+                    <a href="{{ url_for('register') }}" class="text-purple-600 hover:text-purple-700 font-semibold hover:underline transition-colors duration-300">
+                        Hier registrieren
+                    </a>
+                </p>
             </div>
+        </div>
+
+        <!-- Decorative Elements -->
+        <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+            <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+            <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+            <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
         </div>
     </div>
 </body>
