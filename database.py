@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 
 DATABASE_PATH = 'users.db'
 
@@ -65,10 +66,18 @@ def init_database():
             message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'system')),
             content TEXT NOT NULL,
             image_data TEXT,
+            worksheet_filename TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
+
+    # Add worksheet_filename column to chat_history table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN worksheet_filename TEXT")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            pass # Column already exists
 
     conn.commit()
     conn.close()
@@ -184,15 +193,15 @@ def get_all_users():
 
     return [{'id': u[0], 'username': u[1], 'password': u[2], 'user_type': u[3], 'created_at': u[4]} for u in users]
 
-def save_chat_message(user_id, session_id, message_type, content, image_data=None):
+def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None):
     """Save a chat message to the database"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT INTO chat_history (user_id, session_id, message_type, content, image_data)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, session_id, message_type, content, image_data))
+        INSERT INTO chat_history (user_id, session_id, message_type, content, image_data, worksheet_filename)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (user_id, session_id, message_type, content, image_data, worksheet_filename))
 
     conn.commit()
     conn.close()
@@ -203,7 +212,7 @@ def get_chat_history(user_id, session_id):
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT message_type, content, image_data, created_at
+        SELECT message_type, content, image_data, worksheet_filename, created_at
         FROM chat_history
         WHERE user_id = ? AND session_id = ?
         ORDER BY created_at ASC
@@ -212,7 +221,7 @@ def get_chat_history(user_id, session_id):
     messages = cursor.fetchall()
     conn.close()
 
-    return [{'message_type': m[0], 'content': m[1], 'image_data': m[2], 'created_at': m[3]} for m in messages]
+    return [{'message_type': m[0], 'content': m[1], 'image_data': m[2], 'worksheet_filename': m[3], 'created_at': m[4]} for m in messages]
 
 def get_user_chat_sessions(user_id):
     """Get all chat sessions for a user"""
@@ -374,3 +383,47 @@ def get_submission_for_user(assignment_id, student_id):
     if submission:
         return {'id': submission[0], 'content': submission[1], 'submitted_at': submission[2]}
     return None
+
+def get_unique_school_names():
+    """Get a list of unique school names"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT DISTINCT school FROM users WHERE school IS NOT NULL')
+    schools = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in schools]
+
+def get_student_usernames_for_school(school):
+    """Get a list of student usernames for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT username FROM users WHERE school = ? AND user_type = \'student\'', (school,))
+    students = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in students]
+
+def get_unique_class_names_for_school(school):
+    """Get a list of unique class names for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT DISTINCT class_name FROM users WHERE school = ? AND class_name IS NOT NULL', (school,))
+    classes = cursor.fetchall()
+    conn.close()
+
+    return [c[0] for c in classes]
+
+def get_teacher_usernames_for_school(school):
+    """Get a list of teacher usernames for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT username FROM users WHERE school = ? AND user_type = \'teacher\'', (school,))
+    teachers = cursor.fetchall()
+    conn.close()
+
+    return [t[0] for t in teachers]

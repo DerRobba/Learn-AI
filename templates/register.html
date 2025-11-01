@@ -146,6 +146,22 @@
                     >
                 </div>
 
+                <!-- Confirm Password Field -->
+                <div class="space-y-2 form-field">
+                    <label for="password_confirm" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                        <span class="material-symbols-outlined text-purple-600">lock</span>
+                        <span>Passwort bestätigen</span>
+                    </label>
+                    <input
+                        type="password"
+                        id="password_confirm"
+                        name="password_confirm"
+                        required
+                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
+                        placeholder="Gib dein Passwort erneut ein"
+                    >
+                </div>
+
                 <!-- User Type Selection -->
                 <div class="space-y-3 form-field">
                     <label class="text-sm font-semibold text-gray-700">Ich bin:</label>
@@ -186,7 +202,7 @@
                 </div>
 
                 <!-- School Field -->
-                <div id="school-group" class="space-y-2 form-field">
+                <div id="school-group" class="relative space-y-2 form-field pb-16">
                     <label for="school" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                         <span class="material-symbols-outlined text-purple-600">apartment</span>
                         <span>Schule</span>
@@ -229,5 +245,55 @@
             <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
         </div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const schoolInput = document.getElementById('school');
+            const schoolGroup = document.getElementById('school-group');
+            let suggestionsContainer = document.getElementById('school-suggestions');
+            if (!suggestionsContainer) {
+                suggestionsContainer = document.createElement('div');
+                suggestionsContainer.id = 'school-suggestions';
+                suggestionsContainer.className = 'absolute z-50 w-full bg-white border border-gray-200 rounded-xl mt-1 shadow-lg';
+                schoolGroup.appendChild(suggestionsContainer);
+            }
+
+            let schools = [];
+
+            fetch('/api/schools')
+                .then(response => response.json())
+                .then(data => {
+                    schools = data;
+                });
+
+            schoolInput.addEventListener('input', () => {
+                const inputText = schoolInput.value.toLowerCase();
+                if (inputText.length === 0) {
+                    suggestionsContainer.innerHTML = '';
+                    return;
+                }
+
+                const filteredSchools = schools.filter(school => school.toLowerCase().includes(inputText));
+                
+                if (filteredSchools.length > 0) {
+                    suggestionsContainer.innerHTML = filteredSchools.map(school => `<div class="p-2 cursor-pointer hover:bg-gray-100">${school}</div>`).join('');
+                } else {
+                    suggestionsContainer.innerHTML = '';
+                }
+            });
+
+            suggestionsContainer.addEventListener('click', (e) => {
+                if (e.target.tagName === 'DIV') {
+                    schoolInput.value = e.target.textContent;
+                    suggestionsContainer.innerHTML = '';
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (e.target !== schoolInput) {
+                    suggestionsContainer.innerHTML = '';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

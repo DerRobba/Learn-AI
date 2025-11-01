@@ -315,5 +315,65 @@
         <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
         <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            function setupAutocomplete(inputId, suggestionsList) {
+                const input = document.getElementById(inputId);
+                const parentDiv = input.parentElement;
+                parentDiv.classList.add('relative');
+                let suggestionsContainer = document.createElement('div');
+                suggestionsContainer.className = 'absolute z-50 w-full bg-white border border-gray-200 rounded-xl mt-1 shadow-lg';
+                parentDiv.appendChild(suggestionsContainer);
+
+                input.addEventListener('input', () => {
+                    const inputText = input.value.toLowerCase();
+                    if (inputText.length === 0) {
+                        suggestionsContainer.innerHTML = '';
+                        return;
+                    }
+
+                    const filteredItems = suggestionsList.filter(item => item.toLowerCase().includes(inputText));
+                    
+                    if (filteredItems.length > 0) {
+                        suggestionsContainer.innerHTML = filteredItems.map(item => `<div class="p-2 cursor-pointer hover:bg-gray-100">${item}</div>`).join('');
+                    } else {
+                        suggestionsContainer.innerHTML = '';
+                    }
+                });
+
+                suggestionsContainer.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'DIV') {
+                        input.value = e.target.textContent;
+                        suggestionsContainer.innerHTML = '';
+                    }
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (e.target !== input) {
+                        suggestionsContainer.innerHTML = '';
+                    }
+                });
+            }
+
+            fetch('/api/students')
+                .then(response => response.json())
+                .then(data => {
+                    setupAutocomplete('student_username', data);
+                });
+
+            fetch('/api/teachers')
+                .then(response => response.json())
+                .then(data => {
+                    setupAutocomplete('teacher_username', data);
+                });
+
+            fetch('/api/classes')
+                .then(response => response.json())
+                .then(data => {
+                    setupAutocomplete('class_name_student', data);
+                    setupAutocomplete('class_name_teacher', data);
+                });
+        });
+    </script>
 </body>
 </html>
