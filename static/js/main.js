@@ -11,11 +11,46 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearCacheButton = document.getElementById('clear-cache-button');
     const cachedImageIndicator = document.getElementById('cached-image-indicator');
     const newChatBtn = document.getElementById('new-chat-btn');
-    const chatSessions = document.getElementById('chat-sessions');
     const chatInput = document.getElementById('chat-input');
+    const muteTtsButton = document.getElementById('mute-tts-button');
 
-    // Mobile Navigation
+    // TTS Mute State
+    let isMuted = localStorage.getItem('isMuted') === 'true';
+
+    function updateMuteButtonUI() {
+        if (muteTtsButton) {
+            const icon = muteTtsButton.querySelector('.material-symbols-outlined');
+
+            // Remove all color classes first
+            muteTtsButton.classList.remove('bg-purple-600', 'hover:bg-purple-700', 'bg-gray-300', 'text-gray-800', 'hover:bg-gray-400', 'bg-green-500', 'hover:bg-green-600');
+            icon.classList.remove('text-white', 'text-gray-800');
+
+            if (isMuted) {
+                icon.textContent = 'volume_off';
+                muteTtsButton.classList.add('bg-gray-300', 'hover:bg-gray-400');
+                icon.classList.add('text-gray-800');
+            } else {
+                icon.textContent = 'volume_up';
+                muteTtsButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                icon.classList.add('text-white');
+            }
+        }
+    }
+
+    // Initial UI update for mute button
+    updateMuteButtonUI();
+
+    if (muteTtsButton) {
+        muteTtsButton.addEventListener('click', () => {
+            isMuted = !isMuted;
+            localStorage.setItem('isMuted', isMuted);
+            updateMuteButtonUI();
+        });
+    }
+
+    // --- Unified Navigation Logic ---
     const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
     const sidebarMenuBtn = document.getElementById('sidebar-menu-btn');
     const closeSidebarBtn = document.getElementById('close-sidebar');
     const mobileOverlay = document.getElementById('mobile-overlay');
@@ -26,97 +61,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatSessionsContainer = document.getElementById('chat-sessions-container');
     const assignmentListContainer = document.getElementById('assignment-list-container');
 
-    let uploadedImage = null;
+    function toggleSidebar() {
+        const isOpen = sidebar.classList.contains('translate-x-0');
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (chatInput) {
-        chatInput.addEventListener('keydown', function(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                const message = chatInput.value.trim();
-                if (message) {
-                    addUserMessage(message);
-                    sendToServer(message);
-                    chatInput.value = '';
-                    chatInput.style.height = 'auto';
+        if (isOpen) {
+            // CLOSE
+            sidebar.classList.remove('translate-x-0');
+            sidebar.classList.add('-translate-x-full');
+            sidebarMenuBtn.classList.remove('active');
+            mobileOverlay.classList.add('hidden');
+            if (mainContent) {
+                mainContent.style.marginLeft = '0';
+            }
+        } else {
+            // OPEN
+            sidebar.classList.remove('-translate-x-full');
+            sidebar.classList.add('translate-x-0');
+            sidebarMenuBtn.classList.add('active');
+            if (window.innerWidth < 768) {
+                mobileOverlay.classList.remove('hidden');
+            } else {
+                if (mainContent) {
+                    mainContent.style.marginLeft = '20rem'; // w-80
                 }
             }
-        });
-
-        chatInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-        });
-    }
-
-    if (!SpeechRecognition) {
-        console.log("Spracherkennung wird in diesem Browser nicht unterstützt.");
-    } else {
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'de-DE';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        let isRecording = false;
-
-        // Speech Recognition Event Handlers
-        recordButton.addEventListener('click', () => {
-            if (isRecording) {
-                recognition.stop();
-                isRecording = false;
-                updateRecordButton(false);
-            } else {
-                recognition.start();
-                isRecording = true;
-                updateRecordButton(true);
-            }
-        });
-
-        function updateRecordButton(recording) {
-            if (recording) {
-                recordButton.innerHTML = '<span class="material-symbols-outlined">stop</span>';
-                recordButton.classList.remove('bg-purple-600', 'hover:bg-purple-700');
-                recordButton.classList.add('bg-red-600', 'hover:bg-red-700');
-            } else {
-                recordButton.innerHTML = '<span class="material-symbols-outlined">mic</span>';
-                recordButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-                recordButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
-            }
         }
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            addUserMessage(transcript);
-            sendToServer(transcript);
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error', event.error);
-            isRecording = false;
-            updateRecordButton(false);
-
-            let errorMessage = "Es gab einen Fehler bei der Spracherkennung. ";
-            if (event.error === 'no-speech') {
-                errorMessage += "Keine Sprache erkannt. Bitte versuche es erneut.";
-            } else if (event.error === 'audio-capture') {
-                errorMessage += "Mikrofon konnte nicht gefunden werden. Bitte überprüfe deine Einstellungen.";
-            } else if (event.error === 'not-allowed') {
-                errorMessage += "Zugriff auf das Mikrofon wurde verweigert. Bitte erlaube den Zugriff.";
-            } else {
-                errorMessage += "Bitte versuche es erneut.";
-            }
-
-            addBotMessage(errorMessage);
-        };
-
-        recognition.onend = () => {
-            isRecording = false;
-            updateRecordButton(false);
-        };
     }
 
-    // Mobile Navigation Functions
     if (sidebarMenuBtn) {
         sidebarMenuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -128,31 +99,29 @@ document.addEventListener('DOMContentLoaded', function() {
         closeSidebarBtn.addEventListener('click', toggleSidebar);
     }
 
-    function toggleSidebar() {
-        const isOpen = sidebar.classList.contains('translate-x-0');
-
-        if (isOpen) {
-            sidebar.classList.remove('translate-x-0');
-            sidebar.classList.add('-translate-x-full');
-            sidebarMenuBtn.classList.remove('active');
-            mobileOverlay.classList.add('hidden');
-        } else {
-            sidebar.classList.remove('-translate-x-full');
-            sidebar.classList.add('translate-x-0');
-            sidebarMenuBtn.classList.add('active');
-            mobileOverlay.classList.remove('hidden');
-        }
+    if (mobileOverlay) {
+        mobileOverlay.addEventListener('click', toggleSidebar);
     }
 
-    // Close sidebars when clicking overlay
-    mobileOverlay.addEventListener('click', toggleSidebar);
-
-    // Close sidebars on window resize to desktop
     window.addEventListener('resize', () => {
-        if (window.innerWidth >= 768) {
-            toggleSidebar();
+        const isOpen = sidebar.classList.contains('translate-x-0');
+        if (isOpen) {
+            if (window.innerWidth < 768) {
+                // Desktop to Mobile
+                mobileOverlay.classList.remove('hidden');
+                if (mainContent) {
+                    mainContent.style.marginLeft = '0';
+                }
+            } else {
+                // Mobile to Desktop
+                mobileOverlay.classList.add('hidden');
+                if (mainContent) {
+                    mainContent.style.marginLeft = '20rem';
+                }
+            }
         }
     });
+
 
     if (chatsTabBtn) {
         chatsTabBtn.addEventListener('click', () => {
@@ -220,47 +189,213 @@ document.addEventListener('DOMContentLoaded', function() {
         chatHistory.appendChild(thinkingIndicator);
         scrollToBottom();
 
-        fetch('/ask', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ question: text })
-        })
-        .then(response => response.json())
-        .then(data => {
-            chatHistory.removeChild(thinkingIndicator);
-            addBotMessage(data.answer);
-            speak(data.answer);
-        })
-        .catch(error => {
-            console.error('Error sending request:', error);
-            chatHistory.removeChild(thinkingIndicator);
-            addBotMessage("Es gab ein Problem bei der Verarbeitung deiner Anfrage. Bitte versuche es später noch einmal.");
-        });
+        const botMessageElement = document.createElement('div');
+        botMessageElement.className = 'flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message';
+        const time = new Date();
+        botMessageElement.innerHTML = `
+            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-white text-lg">adb</span>
+            </div>
+            <div class="flex-1">
+                <div class="flex items-center space-x-2 mb-1">
+                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
+                    <span class="text-xs text-gray-500">${formatTime(time)}</span>
+                </div>
+                <p class="text-gray-700 text-sm leading-relaxed"></p>
+            </div>
+        `;
+
+        const eventSource = new EventSource(`/ask?question=${encodeURIComponent(text)}`);
+        let fullAnswer = '';
+        let botMessageAppended = false;
+
+        eventSource.onmessage = function(event) {
+            if (!botMessageAppended) {
+                if (thinkingIndicator && thinkingIndicator.parentNode) {
+                    thinkingIndicator.parentNode.removeChild(thinkingIndicator);
+                }
+                chatHistory.appendChild(botMessageElement);
+                botMessageAppended = true;
+            }
+            
+            const content = event.data;
+            console.log(content);
+            if (content.startsWith("WORKSHEET_DOWNLOAD_LINK:")) {
+                const worksheet_filename = content.substring("WORKSHEET_DOWNLOAD_LINK:".length);
+                const downloadButton = document.createElement('a');
+                downloadButton.href = `/download-worksheet/${worksheet_filename}`;
+                downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
+                downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
+                botMessageElement.querySelector('.flex-1').appendChild(downloadButton);
+            } else if (content.toLowerCase().startsWith("createmd:")) {
+                // Do nothing, hide this from the user
+            } else {
+                fullAnswer += content;
+                botMessageElement.querySelector('p').innerHTML = marked.parse(fullAnswer);
+            }
+            scrollToBottom();
+        };
+
+        eventSource.onerror = function(error) {
+            console.error('EventSource failed:', error);
+            eventSource.close();
+            if (thinkingIndicator && thinkingIndicator.parentNode) {
+                thinkingIndicator.parentNode.removeChild(thinkingIndicator);
+            }
+            if (fullAnswer) {
+                speak(fullAnswer);
+            } else {
+                addBotMessage("Es gab ein Problem bei der Verarbeitung deiner Anfrage. Bitte versuche es später noch einmal.");
+            }
+        };
+
+        eventSource.onclose = function() {
+            if (fullAnswer) {
+                speak(fullAnswer);
+            }
+        };
     }
 
     function speak(text) {
-        speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'de-DE';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        speechSynthesis.speak(utterance);
+        if (isMuted) {
+            console.log("TTS is muted.");
+            return;
+        }
+
+        const audio = new Audio(`/synthesize?text=${encodeURIComponent(text)}`);
+        audio.play();
+    }
+
+    if (chatInput) {
+        const sendButton = document.getElementById('send-button');
+
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                addUserMessage(message);
+                sendToServer(message);
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                
+                if (sendButton && recordButton) {
+                    recordButton.classList.remove('hidden');
+                    sendButton.classList.add('hidden');
+                }
+            }
+        }
+
+        if (sendButton) {
+            sendButton.addEventListener('click', sendMessage);
+        }
+
+        chatInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function updateButtonVisibility() {
+            if (sendButton && recordButton) {
+                if (chatInput.value.trim().length > 0) {
+                    recordButton.classList.add('hidden');
+                    sendButton.classList.remove('hidden');
+                } else {
+                    recordButton.classList.remove('hidden');
+                    sendButton.classList.add('hidden');
+                }
+            }
+        }
+
+        chatInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            updateButtonVisibility();
+        });
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+        console.log("Spracherkennung wird in diesem Browser nicht unterst\u00fctzt.");
+    } else if (recordButton) { // Check if recordButton exists
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'de-DE';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        let isRecording = false;
+
+        // Speech Recognition Event Handlers
+        recordButton.addEventListener('click', () => {
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+
+        function updateRecordButton(recording) {
+            if (recording) {
+                recordButton.innerHTML = '<span class="material-symbols-outlined">stop</span>';
+                recordButton.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                recordButton.classList.add('bg-red-600', 'hover:bg-red-700');
+            } else {
+                recordButton.innerHTML = '<span class="material-symbols-outlined">mic</span>';
+                recordButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                recordButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
+            }
+        }
+        
+        recognition.onstart = () => {
+            isRecording = true;
+            updateRecordButton(true);
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+
+            // Send it directly without modifying the input field
+            if (transcript) {
+                addUserMessage(transcript);
+                sendToServer(transcript);
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error', event.error);
+        };
+
+        recognition.onend = () => {
+            isRecording = false;
+            updateRecordButton(false);
+        };
     }
 
     function formatTime(date) {
         return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     }
 
-    function addUserMessage(message, timestamp = null) {
+    function addUserMessage(message, timestamp = null, image = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 justify-end chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
+        
+        let imageHTML = '';
+        if (image) {
+            let imageUrl;
+            if (typeof image === 'string') {
+                imageUrl = image; // It's a base64 string from history
+            } else {
+                imageUrl = URL.createObjectURL(image); // It's a File object from upload
+            }
+            imageHTML = `<img src="${imageUrl}" class="mt-2 rounded-lg max-w-xs">`;
+        }
+
         messageElement.innerHTML = `
             <div class="flex flex-col items-end max-w-xs md:max-w-md">
                 <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm">
+                    ${imageHTML}
                     <p class="text-sm">${message}</p>
                 </div>
                 <span class="text-xs text-gray-500 mt-1">Du • ${formatTime(time)}</span>
@@ -273,7 +408,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(scrollToBottom, 100);
     }
 
-    function addBotMessage(message, timestamp = null) {
+    function addBotMessage(message, timestamp = null, worksheet_filename = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
@@ -290,10 +425,21 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         chatHistory.appendChild(messageElement);
+
+        if (worksheet_filename) {
+            const downloadButton = document.createElement('a');
+            downloadButton.href = `/download-worksheet/${worksheet_filename}`;
+            downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
+            downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
+            messageElement.querySelector('.flex-1').appendChild(downloadButton);
+        }
+
         setTimeout(scrollToBottom, 100);
     }
 
     // Image upload functionality
+    let uploadedImage = null;
+
     if (imageUploadButton) {
         imageUploadButton.addEventListener('click', () => {
             imageInput.click();
@@ -309,31 +455,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     previewImage.src = e.target.result;
                     uploadedImage = file;
                     imagePreview.classList.remove('hidden');
+                    cacheImageOnServer(uploadedImage);
                 };
                 reader.readAsDataURL(file);
             }
-        });
-    }
-
-    if (analyzeButton) {
-        analyzeButton.addEventListener('click', () => {
-            if (uploadedImage) {
-                sendImageToServer(uploadedImage);
-            }
-        });
-    }
-
-    if (cacheButton) {
-        cacheButton.addEventListener('click', () => {
-            if (uploadedImage) {
-                cacheImageOnServer(uploadedImage);
-            }
-        });
-    }
-
-    if (clearCacheButton) {
-        clearCacheButton.addEventListener('click', () => {
-            clearImageCache();
         });
     }
 
@@ -343,59 +468,32 @@ document.addEventListener('DOMContentLoaded', function() {
             previewImage.src = '';
             imagePreview.classList.add('hidden');
             imageInput.value = '';
+            clearImageCache();
         });
     }
 
-    function sendImageToServer(imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
+    function sendMessage() {
+        const message = chatInput.value.trim();
+        if (message || uploadedImage) {
+            addUserMessage(message, null, uploadedImage);
+            sendToServer(message);
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            
+            if (uploadedImage) {
+                removeButton.click();
+            }
 
-        const thinkingIndicator = document.createElement('div');
-        thinkingIndicator.className = 'flex space-x-3 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl';
-        thinkingIndicator.innerHTML = `
-            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-white text-lg">adb</span>
-            </div>
-            <div class="flex-1">
-                <div class="flex items-center space-x-2 mb-1">
-                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
-                    <span class="text-xs text-gray-500">${formatTime(new Date())}</span>
-                </div>
-                <div class="flex space-x-1">
-                    <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
-                    <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
-                    <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-                </div>
-            </div>
-        `;
-        chatHistory.appendChild(thinkingIndicator);
-        scrollToBottom();
-
-        addUserMessage('📷 Bild zur Analyse hochgeladen');
-
-        fetch('/analyze-image', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            chatHistory.removeChild(thinkingIndicator);
-            addBotMessage(data.analysis);
-            speak(data.analysis);
-            removeButton.click();
-        })
-        .catch(error => {
-            console.error('Error analyzing image:', error);
-            chatHistory.removeChild(thinkingIndicator);
-            addBotMessage("Es gab ein Problem bei der Analyse des Bildes. Bitte versuche es später noch einmal.");
-        });
+            if (sendButton && recordButton) {
+                recordButton.classList.remove('hidden');
+                sendButton.classList.add('hidden');
+            }
+        }
     }
 
     function cacheImageOnServer(imageFile) {
         const formData = new FormData();
         formData.append('image', imageFile);
-
-        addUserMessage('💾 Bild zum Zwischenspeicher hinzugefügt');
 
         fetch('/cache-image', {
             method: 'POST',
@@ -403,12 +501,8 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            addBotMessage(data.message);
-            speak(data.message);
+            console.log(data.message);
             cachedImageIndicator.classList.remove('hidden');
-            clearCacheButton.classList.remove('hidden');
-            clearCacheButton.classList.add('flex');
-            removeButton.click();
         })
         .catch(error => {
             console.error('Error caching image:', error);
@@ -422,15 +516,11 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            addBotMessage(data.message);
-            speak(data.message);
+            console.log(data.message);
             cachedImageIndicator.classList.add('hidden');
-            clearCacheButton.classList.add('hidden');
-            clearCacheButton.classList.remove('flex');
         })
         .catch(error => {
             console.error('Error clearing cache:', error);
-            addBotMessage("Es gab ein Problem beim Leeren des Zwischenspeichers.");
         });
     }
 
@@ -443,9 +533,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 chatHistory.innerHTML = '';
                 data.chat_history.forEach(msg => {
                     if (msg.message_type === 'user') {
-                        addUserMessage(msg.content, msg.created_at);
+                        addUserMessage(msg.content, msg.created_at, msg.image_data);
                     } else if (msg.message_type === 'assistant') {
-                        addBotMessage(msg.content, msg.created_at);
+                        addBotMessage(msg.content, msg.created_at, msg.worksheet_filename);
                     }
                 });
             }
@@ -471,8 +561,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Load chat session when clicked
-    if (chatSessions) {
-        chatSessions.addEventListener('click', (e) => {
+    if (chatSessionsContainer) {
+        chatSessionsContainer.addEventListener('click', (e) => {
             const sessionElement = e.target.closest('.chat-session');
 
             if (sessionElement) {
@@ -535,15 +625,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteChatOption = document.getElementById('delete-chat');
     const assignmentContextMenu = document.getElementById('assignment-context-menu');
     const deleteAssignmentOption = document.getElementById('delete-assignment');
-    const assignmentList = document.getElementById('assignment-list');
 
     let activeSessionId = null;
     let activeAssignmentId = null;
 
     const userType = document.getElementById('user-type').value;
 
-    if (chatSessions) {
-        chatSessions.addEventListener('contextmenu', (e) => {
+    if (chatSessionsContainer) {
+        chatSessionsContainer.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             const sessionElement = e.target.closest('.chat-session');
             if (sessionElement) {
@@ -555,8 +644,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (userType === 'teacher' && assignmentList) {
-        assignmentList.addEventListener('contextmenu', (e) => {
+    if (assignmentListContainer) {
+        assignmentListContainer.addEventListener('click', (e) => {
+            const assignmentElement = e.target.closest('.assignment-item');
+            if (assignmentElement) {
+                // Close sidebar on mobile after selecting an assignment
+                if (window.innerWidth < 768) {
+                    toggleSidebar();
+                }
+            }
+        });
+    }
+
+    if (userType === 'teacher' && assignmentListContainer) {
+        assignmentListContainer.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             const assignmentElement = e.target.closest('.assignment-item');
             if (assignmentElement) {
@@ -626,6 +727,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Force close sidebar on page show (e.g., when using back button)
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            // Reset sidebar state on mobile to ensure it's closed
+            if (window.innerWidth < 768) {
+                sidebar.classList.remove('translate-x-0');
+                sidebar.classList.add('-translate-x-full');
+                sidebarMenuBtn.classList.remove('active');
+                mobileOverlay.classList.add('hidden');
+            }
+        }
+    });
 
     // Load current chat history on page load
     loadChatHistory();

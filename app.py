@@ -1,19 +1,55 @@
+import subprocess
 import os
 import base64
 import uuid
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school
+from elevenlabs.client import ElevenLabs
+from elevenlabs.client import ElevenLabs
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 
+@app.route('/api/schools')
+def get_schools():
+    schools = get_unique_school_names()
+    return jsonify(schools)
+
+@app.route('/api/students')
+def get_students():
+    if 'user_id' not in session or session.get('user_type') != 'it-admin':
+        return jsonify([])
+    school = session.get('school')
+    students = get_student_usernames_for_school(school)
+    return jsonify(students)
+
+@app.route('/api/classes')
+def get_classes():
+    if 'user_id' not in session or session.get('user_type') != 'it-admin':
+        return jsonify([])
+    school = session.get('school')
+    classes = get_unique_class_names_for_school(school)
+    return jsonify(classes)
+
+@app.route('/api/teachers')
+def get_teachers():
+    if 'user_id' not in session or session.get('user_type') != 'it-admin':
+        return jsonify([])
+    school = session.get('school')
+    teachers = get_teacher_usernames_for_school(school)
+    return jsonify(teachers)
+
 # Initialize database
 init_database()
+
+# Ensure sheets directory exists
+if not os.path.exists('sheets'):
+    os.makedirs('sheets')
 
 BASE_URL = os.getenv("BASE_URL")
 MODEL = os.getenv("MODEL")
@@ -25,15 +61,25 @@ client = OpenAI(
     api_key=API_KEY
 )
 
-# In-memory conversation history and current image context
-conversation_history = ""
-cached_image = None  # Stores cached uploaded image data (base64 + mime_type)
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
+
+elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+
 system_prompt = os.getenv("SYSTEM_PROMPT")
-if system_prompt and not any(d.get('role') == 'system' for d in conversation_history):
-    tmp_sys_prompt = "System Prompt: " + system_prompt
-    conversation_history += tmp_sys_prompt
+
+ip_ban_list = os.getenv("IP_BAN_LIST", "").split(",")
 
 
+@app.before_request
+def block_method():
+    if request.environ.get('HTTP_X_FORWARDED_FOR'):
+        ip = request.environ.get('HTTP_X_FORWARDED_FOR').split(', ')[0]
+    else:
+        ip = request.environ.get('REMOTE_ADDR')
+    print(ip)
+    if ip in ip_ban_list:
+        abort(403)
 @app.route('/login')
 def login():
     if 'user_id' in session:
@@ -69,11 +115,15 @@ def register():
 def register_post():
     username = request.form.get('username')
     password = request.form.get('password')
+    password_confirm = request.form.get('password_confirm')
     user_type = request.form.get('user_type')
     school = request.form.get('school')
 
-    if not username or not password or not user_type or not school:
+    if not username or not password or not password_confirm or not user_type or not school:
         return render_template('register.html', error='Alle Felder sind erforderlich.')
+
+    if password != password_confirm:
+        return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
 
     if not create_user(username, password, user_type, school):
         if user_type == 'it-admin':
@@ -81,7 +131,18 @@ def register_post():
         else:
             return render_template('register.html', error='Benutzername bereits vergeben.')
     
-    return redirect(url_for('login'))
+    # Automatically log in the user after registration
+    user = get_user_by_username(username)
+    if user:
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['user_type'] = user['user_type']
+        session['class_name'] = user['class_name']
+        session['school'] = user['school']
+        return redirect(url_for('index'))
+    else:
+        # This should not happen if create_user was successful
+        return redirect(url_for('login'))
 
 @app.route('/logout')
 def logout():
@@ -128,8 +189,159 @@ def new_chat():
     # Create new chat session
     new_session_id = str(uuid.uuid4())
     session['chat_session_id'] = new_session_id
+    
+    # Clear cached image from session and filesystem
+    filename = session.pop('cached_image_filename', None)
+    if filename:
+        try:
+            os.remove(os.path.join('uploads', filename))
+        except OSError as e:
+            print(f"Error deleting cached image: {e}")
 
     return jsonify({'session_id': new_session_id})
+
+@app.route('/ask')
+def ask():
+    if 'user_id' not in session:
+        return jsonify({'answer': 'Bitte melden Sie sich an.'}), 401
+
+    question = request.args.get('question')
+
+    if not question:
+        return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
+
+    user_id = session['user_id']
+    chat_session_id = session.get('chat_session_id')
+    cached_image_filename = session.get('cached_image_filename')
+    cached_image = None
+
+    if cached_image_filename:
+        try:
+            image_path = os.path.join('uploads', cached_image_filename)
+            with open(image_path, "rb") as f:
+                image_data = f.read()
+            base64_image = base64.b64encode(image_data).decode('utf-8')
+            
+            # Get mime type from filename extension
+            mime_type = 'image/' + os.path.splitext(cached_image_filename)[1][1:]
+
+            cached_image = {
+                'base64': base64_image,
+                'mime_type': mime_type,
+                'filename': cached_image_filename
+            }
+        except Exception as e:
+            print(f"Error reading cached image: {e}")
+
+
+    if not chat_session_id:
+        chat_session_id = str(uuid.uuid4())
+        session['chat_session_id'] = chat_session_id
+
+    def generate():
+        try:
+            # Get existing chat history for context
+            chat_history = get_chat_history(user_id, chat_session_id)
+
+            # Build conversation context from database
+            conversation_context = system_prompt if system_prompt else ""
+
+            # Prepare messages with chat history
+            messages = [
+                {"role": "system", "content": conversation_context}
+            ]
+
+            # Add previous messages from database
+            for msg in chat_history:
+                if msg['message_type'] == 'user':
+                    messages.append({"role": "user", "content": msg['content']})
+                elif msg['message_type'] == 'assistant':
+                    messages.append({"role": "assistant", "content": msg['content']})
+
+            # Save user question to database
+            image_data = None
+            if cached_image:
+                image_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
+
+            save_chat_message(user_id, chat_session_id, 'user', question, image_data)
+
+            # If there's a cached image, include it in the user message
+            if cached_image:
+                user_content = [
+                    {"type": "text", "text": question},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
+                        }
+                    }
+                ]
+                messages.append({"role": "user", "content": user_content})
+            else:
+                messages.append({"role": "user", "content": question})
+
+            response_stream = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                stream=True
+            )
+
+            full_answer = ""
+            for chunk in response_stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_answer += content
+                    yield f"data: {content}\n\n"
+
+            # Check if AI wants to create .md file
+            if full_answer.lower().startswith("createmd:"):
+                md_content = full_answer[9:]
+                worksheet_uuid = str(uuid.uuid4())
+                md_filename = f"sheets/{worksheet_uuid}.md"
+                pdf_filename = f"sheets/{worksheet_uuid}.pdf"
+                download_answer = "Sie können ihr Arbeitsblatt nun downloaden."
+
+                print(md_content.strip())
+                with open(md_filename, "w") as f:
+                    f.write(md_content.strip())
+                
+                # Convert MD to PDF using the external service
+                try:
+                    curl_command = [
+                        'curl',
+                        '--data-urlencode',
+                        f'markdown=@{md_filename}',
+                        '--output',
+                        pdf_filename,
+                        'http://192.168.178.94:8002'
+                    ]
+                    result = subprocess.run(curl_command, capture_output=True, text=True, check=True)
+                    print("Curl stdout:", result.stdout)
+                    print("Curl stderr:", result.stderr)
+                except subprocess.CalledProcessError as e:
+                    print(f"Curl command failed with error: {e}")
+                    print("Curl stdout:", e.stdout)
+                    print("Curl stderr:", e.stderr)
+                    # Optionally, handle the error more gracefully, e.g., yield an error message to the frontend
+                    yield "data: Fehler beim Erstellen des Arbeitsblatts. Bitte versuchen Sie es später erneut.\n\n"
+                    return
+
+                # Save assistant answer and worksheet filename to database
+                save_chat_message(user_id, chat_session_id, 'assistant', download_answer, worksheet_filename=pdf_filename)
+                yield f"data: {download_answer}\n\n"
+                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_filename}\n\n" # Special tag for frontend
+            else:
+                # Save full assistant answer to database
+                save_chat_message(user_id, chat_session_id, 'assistant', full_answer)
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error communicating with Ollama API: {e}")
+            yield "data: Entschuldigung, es gab ein Problem mit der Verbindung zu Ollama. Bitte stellen Sie sicher, dass Ollama läuft und das Modell verfügbar ist.\n\n"
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            yield "data: Ein unerwarteter Fehler ist aufgetreten.\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/load-chat/<session_id>', methods=['POST'])
 def load_chat(session_id):
@@ -235,96 +447,9 @@ def add_student_route():
     return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/ask', methods=['POST'])
-def ask():
-    if 'user_id' not in session:
-        return jsonify({'answer': 'Bitte melden Sie sich an.'}), 401
 
-    global system_prompt
-    global cached_image
-    data = request.get_json()
-    question = data.get('question')
-
-    if not question:
-        return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
-
-    user_id = session['user_id']
-    chat_session_id = session.get('chat_session_id')
-
-    if not chat_session_id:
-        chat_session_id = str(uuid.uuid4())
-        session['chat_session_id'] = chat_session_id
-
-    try:
-        # Get existing chat history for context
-        chat_history = get_chat_history(user_id, chat_session_id)
-
-        # Build conversation context from database
-        conversation_context = system_prompt if system_prompt else ""
-
-        # Prepare messages with chat history
-        messages = [
-            {"role": "system", "content": conversation_context}
-        ]
-
-        # Add previous messages from database
-        for msg in chat_history:
-            if msg['message_type'] == 'user':
-                messages.append({"role": "user", "content": msg['content']})
-            elif msg['message_type'] == 'assistant':
-                messages.append({"role": "assistant", "content": msg['content']})
-
-        # Save user question to database
-        image_data = None
-        if cached_image:
-            image_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-
-        save_chat_message(user_id, chat_session_id, 'user', question, image_data)
-
-        # If there's a cached image, include it in the user message
-        if cached_image:
-            user_content = [
-                {"type": "text", "text": question},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-                    }
-                }
-            ]
-            messages.append({"role": "user", "content": user_content})
-        else:
-            messages.append({"role": "user", "content": question})
-
-        response = client.chat.completions.create(
-          model=MODEL,
-          messages=messages
-        )
-        answer = response.choices[0].message.content
-
-        # Save assistant answer to database
-        save_chat_message(user_id, chat_session_id, 'assistant', answer)
-
-        # Check if AI wants to create .md file
-        if answer.lower().startswith("createmd:"):
-            content = answer[9:]
-            answer = "Sie können ihr Arbeitsblatt nun downloaden."
-            print(content.strip())
-            with open("output.md", "w") as f:
-                f.write(content.strip())
-            os.system('curl --data-urlencode "markdown=$(cat output.md)" --output output.pdf http://192.168.178.94:8002')
-
-        return jsonify({'answer': answer})
-    except requests.exceptions.RequestException as e:
-        print(f"Error communicating with Ollama API: {e}")
-        return jsonify({'answer': 'Entschuldigung, es gab ein Problem mit der Verbindung zu Ollama. Bitte stellen Sie sicher, dass Ollama läuft und das Modell verfügbar ist.'}), 500
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return jsonify({'answer': 'Ein unerwarteter Fehler ist aufgetreten.'}), 500
 @app.route('/cache-image', methods=['POST'])
 def cache_image():
-    global cached_image
-
     if 'image' not in request.files:
         return jsonify({'message': 'Kein Bild gefunden.'}), 400
 
@@ -333,21 +458,13 @@ def cache_image():
         return jsonify({'message': 'Kein Bild ausgewählt.'}), 400
 
     try:
-        # Read image and encode to base64
-        image_data = image_file.read()
-        base64_image = base64.b64encode(image_data).decode('utf-8')
+        # Generate a unique filename
+        filename = str(uuid.uuid4()) + os.path.splitext(image_file.filename)[1]
+        image_path = os.path.join('uploads', filename)
+        image_file.save(image_path)
 
-        # Get the mime type
-        mime_type = image_file.content_type
-        if not mime_type.startswith('image/'):
-            return jsonify({'message': 'Datei ist kein gültiges Bild.'}), 400
-
-        # Store image in cache
-        cached_image = {
-            'base64': base64_image,
-            'mime_type': mime_type,
-            'filename': image_file.filename
-        }
+        # Store filename in session
+        session['cached_image_filename'] = filename
 
         return jsonify({'message': 'Bild wurde im Zwischenspeicher gespeichert. Du kannst nun Fragen dazu stellen!'})
 
@@ -357,127 +474,10 @@ def cache_image():
 
 @app.route('/clear-cache', methods=['POST'])
 def clear_cache():
-    global cached_image
-    cached_image = None
+    filename = session.pop('cached_image_filename', None)
+    if filename:
+        try:
+            os.remove(os.path.join('uploads', filename))
+        except OSError as e:
+            print(f"Error deleting cached image: {e}")
     return jsonify({'message': 'Zwischenspeicher wurde geleert.'})
-
-@app.route('/analyze-image', methods=['POST'])
-def analyze_image():
-    if 'image' not in request.files:
-        return jsonify({'analysis': 'Kein Bild gefunden.'}), 400
-    vision_system_prompt = os.getenv("VISION_SYSTEM_PROMPT")
-
-    image_file = request.files['image']
-    if image_file.filename == '':
-        return jsonify({'analysis': 'Kein Bild ausgewählt.'}), 400
-
-    try:
-        # Read image and encode to base64
-        image_data = image_file.read()
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-
-        # Get the mime type
-        mime_type = image_file.content_type
-        if not mime_type.startswith('image/'):
-            return jsonify({'analysis': 'Datei ist kein gültiges Bild.'}), 400
-
-        # Send to OpenAI Vision API
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": vision_system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Analysiere dieses Bild und beschreibe detailliert, was du siehst. Falls es sich um Text handelt, extrahiere und erkläre den Inhalt. Falls es sich um ein Diagramm, eine Grafik oder ein wissenschaftliches Bild handelt, erkläre es so, dass es für Lernzwecke nützlich ist."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime_type};base64,{base64_image}"
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=1000
-        )
-
-        analysis = response.choices[0].message.content
-        return jsonify({'analysis': analysis})
-
-    except Exception as e:
-        print(f"Error analyzing image: {e}")
-        return jsonify({'analysis': 'Es gab einen Fehler bei der Bildanalyse. Bitte versuche es später noch einmal.'}), 500
-
-@app.route('/download')
-def download_file():
-    file_path="output.pdf"
-    return send_file(
-        file_path,
-        as_attachment=True,
-        download_name="Arbeitsblatt.pdf"
-    )
-
-@app.route('/create-assignment', methods=['GET', 'POST'])
-def create_assignment_route():
-    if 'user_id' not in session or session['user_type'] != 'teacher':
-        return redirect(url_for('login'))
-
-    if request.method == 'POST':
-        title = request.form.get('title')
-        description = request.form.get('description')
-        class_name = session['class_name']
-        school = session['school']
-        created_by = session['user_id']
-
-        if not title or not description:
-            return render_template('create_assignment.html', error='Titel und Beschreibung sind erforderlich.')
-
-        create_assignment(title, description, created_by, class_name, school)
-        return redirect(url_for('index'))
-
-    return render_template('create_assignment.html')
-
-@app.route('/assignment/<int:assignment_id>', methods=['GET', 'POST'])
-def view_assignment(assignment_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    assignment = get_assignment(assignment_id)
-    if not assignment:
-        return "Assignment not found", 404
-
-    if request.method == 'POST':
-        if session['user_type'] == 'student':
-            content = request.form.get('submission_content')
-            if content:
-                create_submission(assignment_id, session['user_id'], content)
-                return redirect(url_for('view_assignment', assignment_id=assignment_id))
-        return redirect(url_for('view_assignment', assignment_id=assignment_id))
-
-    submission = None
-    if session['user_type'] == 'student':
-        submission = get_submission_for_user(assignment_id, session['user_id'])
-    
-    submissions = None
-    if session['user_type'] == 'teacher':
-        submissions = get_submissions_for_assignment(assignment_id)
-
-    return render_template('view_assignment.html', assignment=assignment, submission=submission, submissions=submissions, user_type=session.get('user_type'))
-
-@app.route('/delete-assignment/<int:assignment_id>', methods=['POST'])
-def delete_assignment_route(assignment_id):
-    if 'user_id' not in session or session['user_type'] != 'teacher':
-        return redirect(url_for('login'))
-
-    delete_assignment(assignment_id)
-    return redirect(url_for('index'))
-
-if __name__ == '__main__':
-    app.run(debug=True)

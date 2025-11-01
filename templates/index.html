@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intelligenter Lernassistent</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
@@ -13,14 +14,14 @@
         }
 
         /* Burger Menu Animation */
-        #burger-menu-btn.active .burger-line:nth-child(1) {
+        #sidebar-menu-btn.active .burger-line:nth-child(1) {
             transform: rotate(45deg) translate(6px, 6px);
         }
-        #burger-menu-btn.active .burger-line:nth-child(2) {
+        #sidebar-menu-btn.active .burger-line:nth-child(2) {
             opacity: 0;
             transform: scale(0);
         }
-        #burger-menu-btn.active .burger-line:nth-child(3) {
+        #sidebar-menu-btn.active .burger-line:nth-child(3) {
             transform: rotate(-45deg) translate(6px, -6px);
         }
 
@@ -79,14 +80,16 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen">
+    <input type="hidden" id="user-type" value="{{ user_type }}">
+
     <!-- Mobile Overlay -->
-    <div id="mobile-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden"></div>
+    <div id="mobile-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden"></div>
 
     <div class="flex flex-col h-screen overflow-hidden">
         <!-- Header -->
-        <header class="bg-white shadow-lg px-4 py-3 flex items-center justify-between relative z-40">
+        <header class="bg-white shadow-lg px-4 py-3 flex items-center justify-between relative z-30">
             <!-- Left: Sidebar Menu -->
-            <button id="sidebar-menu-btn" class="flex flex-col justify-center items-center w-8 h-8 space-y-1 hover:scale-110 transition-transform duration-300 md:hidden">
+            <button id="sidebar-menu-btn" class="flex flex-col justify-center items-center w-8 h-8 space-y-1 hover:scale-110 transition-transform duration-300">
                 <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                 <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                 <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
@@ -119,11 +122,16 @@
                     <span class="text-sm font-medium text-gray-700 hidden sm:block">{{ user_type.title() }}: {{ username }}</span>
                 </div>
 
-                <!-- Desktop Download Button -->
-                <a href="/download" class="hidden md:flex items-center space-x-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors duration-300">
-                    <span class="material-symbols-outlined text-sm">download</span>
-                    <span class="text-sm font-medium">Download</span>
-                </a>
+
+
+                <!-- Mute TTS Button -->
+                <button id="mute-tts-button" class="hidden md:flex items-center justify-center w-10 h-10 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors duration-300">
+                    <span class="material-symbols-outlined text-sm">volume_up</span>
+                </button>
+
+
+
+
 
                 <!-- Logout Button -->
                 <a href="/logout" class="flex items-center justify-center w-10 h-10 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
@@ -135,17 +143,23 @@
         <!-- Main Content -->
         <div class="flex-1 flex overflow-hidden">
             <!-- Unified Sidebar -->
-            <aside id="sidebar" class="w-80 bg-white shadow-xl transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out fixed md:static top-0 md:top-auto bottom-0 md:bottom-auto left-0 z-50 flex flex-col sidebar-animation">
+            <aside id="sidebar" class="w-80 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 ease-in-out fixed top-0 bottom-0 left-0 z-50 flex flex-col">
                 <!-- Sidebar Header -->
                 <div class="p-4 border-b border-gray-200">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <button id="chats-tab-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700">Chats</button>
                             <button id="assignments-tab-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100">Aufgaben</button>
+
                         </div>
-                        <button id="close-sidebar" class="md:hidden flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors duration-300" style="touch-action: manipulation;">
-                            <span class="material-symbols-outlined text-lg">close</span>
-                        </button>
+                        <div class="flex items-center space-x-1">
+                            <button id="new-chat-btn" class="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors duration-300" title="Neuer Chat">
+                                <span class="material-symbols-outlined text-lg">add_comment</span>
+                            </button>
+                            <button id="close-sidebar" class="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors duration-300" style="touch-action: manipulation;">
+                                <span class="material-symbols-outlined text-lg">close</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -183,16 +197,14 @@
                                 </div>
                             </a>
                         {% else %}
-                            <div class="p-4 text-center text-gray-500 text-sm">
-                                Keine Aufgaben gefunden.
-                            </div>
+                            <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Aufgaben verfügbar.</p>
                         {% endfor %}
                     </div>
                 </div>
             </aside>
 
             <!-- Main Chat Container -->
-            <main class="flex-1 flex flex-col bg-white md:bg-transparent">
+            <main id="main-content" class="flex-1 flex flex-col bg-white md:bg-transparent transition-all duration-300 ease-in-out">
                 <!-- Chat Messages -->
                 <div class="flex-1 overflow-hidden">
                     <div id="chat-history" class="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
@@ -223,22 +235,17 @@
                             <button id="record-button" class="flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
                                 <span class="material-symbols-outlined">mic</span>
                             </button>
+                            <button id="send-button" class="hidden flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                <span class="material-symbols-outlined">send</span>
+                            </button>
                         </div>
                     </div>
                     <input type="file" id="image-input" accept="image/*" class="hidden">
                     <!-- Image Preview -->
-                    <div id="image-preview" class="hidden mt-4 p-4 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
-                        <img id="preview-image" src="" alt="Vorschau" class="max-w-full h-40 object-contain mx-auto rounded-lg mb-3">
-                        <div class="flex justify-center space-x-2">
-                            <button id="cache-image" class="flex items-center space-x-1 bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors duration-300">
-                                <span class="material-symbols-outlined text-sm">save</span>
-                                <span class="text-sm">Cache</span>
-                            </button>
-                            <button id="analyze-image" class="flex items-center space-x-1 bg-purple-500 text-white px-3 py-1 rounded-lg hover:bg-purple-600 transition-colors duration-300">
-                                <span class="material-symbols-outlined text-sm">search</span>
-                                <span class="text-sm">Analysieren</span>
-                            </button>
-                            <button id="remove-image" class="flex items-center justify-center w-8 h-8 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
+                    <div id="image-preview" class="hidden mt-2">
+                        <div class="relative w-24 h-24 border border-gray-300 rounded-lg overflow-hidden">
+                            <img id="preview-image" src="" alt="Vorschau" class="w-full h-full object-cover">
+                            <button id="remove-image" class="absolute top-1 right-1 flex items-center justify-center w-6 h-6 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors duration-300">
                                 <span class="material-symbols-outlined text-sm">delete</span>
                             </button>
                         </div>
