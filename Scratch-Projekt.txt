@@ -1,9 +1,0 @@
-Ich habs leider nicht geschafft :(
-
-
-Aber dafür liegt es weniger an meinem code und mehr am systemprompt. Das Programm nutzt eine kostenlose KI, allerdings funktioniert die Konversierung nur teilweise. Man muss teilweise Teile des Codes löschen aber das Grundprinzip steht.
-
-
-GitHub: 
-
-https://github.com/DerRobba/scratch-converter
