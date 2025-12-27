@@ -3,4 +3,3 @@ python-dotenv
 requests
 OpenAI
 flask-session
-elevenlabs

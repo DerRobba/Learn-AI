@@ -6,8 +6,6 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from elevenlabs.client import ElevenLabs
-from elevenlabs.client import ElevenLabs
 from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school
 
 load_dotenv()
@@ -60,11 +58,6 @@ client = OpenAI(
     base_url = BASE_URL,
     api_key=API_KEY
 )
-
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
-
-elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 system_prompt = os.getenv("SYSTEM_PROMPT")
 
