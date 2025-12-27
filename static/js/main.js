@@ -12,41 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const cachedImageIndicator = document.getElementById('cached-image-indicator');
     const newChatBtn = document.getElementById('new-chat-btn');
     const chatInput = document.getElementById('chat-input');
-    const muteTtsButton = document.getElementById('mute-tts-button');
 
-    // TTS Mute State
-    let isMuted = localStorage.getItem('isMuted') === 'true';
-
-    function updateMuteButtonUI() {
-        if (muteTtsButton) {
-            const icon = muteTtsButton.querySelector('.material-symbols-outlined');
-
-            // Remove all color classes first
-            muteTtsButton.classList.remove('bg-purple-600', 'hover:bg-purple-700', 'bg-gray-300', 'text-gray-800', 'hover:bg-gray-400', 'bg-green-500', 'hover:bg-green-600');
-            icon.classList.remove('text-white', 'text-gray-800');
-
-            if (isMuted) {
-                icon.textContent = 'volume_off';
-                muteTtsButton.classList.add('bg-gray-300', 'hover:bg-gray-400');
-                icon.classList.add('text-gray-800');
-            } else {
-                icon.textContent = 'volume_up';
-                muteTtsButton.classList.add('bg-green-500', 'hover:bg-green-600');
-                icon.classList.add('text-white');
-            }
-        }
-    }
-
-    // Initial UI update for mute button
-    updateMuteButtonUI();
-
-    if (muteTtsButton) {
-        muteTtsButton.addEventListener('click', () => {
-            isMuted = !isMuted;
-            localStorage.setItem('isMuted', isMuted);
-            updateMuteButtonUI();
-        });
-    }
 
     // --- Unified Navigation Logic ---
     const sidebar = document.getElementById('sidebar');
@@ -243,27 +209,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 thinkingIndicator.parentNode.removeChild(thinkingIndicator);
             }
             if (fullAnswer) {
-                speak(fullAnswer);
+                // Do nothing
             } else {
                 addBotMessage("Es gab ein Problem bei der Verarbeitung deiner Anfrage. Bitte versuche es später noch einmal.");
             }
         };
 
         eventSource.onclose = function() {
-            if (fullAnswer) {
-                speak(fullAnswer);
-            }
+            // Stream closed
         };
-    }
-
-    function speak(text) {
-        if (isMuted) {
-            console.log("TTS is muted.");
-            return;
-        }
-
-        const audio = new Audio(`/synthesize?text=${encodeURIComponent(text)}`);
-        audio.play();
     }
 
     if (chatInput) {
