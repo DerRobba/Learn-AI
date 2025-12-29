@@ -79,6 +79,12 @@ def init_database():
         if 'duplicate column name' not in str(e):
             pass # Column already exists
 
+    # Create indices for better performance
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_chat_history_user_session ON chat_history(user_id, session_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_assignments_class_school ON assignments(class_name, school)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id)')
+
     conn.commit()
     conn.close()
 

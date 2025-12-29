@@ -2,6 +2,7 @@ import subprocess
 import os
 import base64
 import uuid
+import json
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app
 import requests
 from dotenv import load_dotenv
@@ -238,6 +239,7 @@ def ask():
 
             # Build conversation context from database
             conversation_context = system_prompt if system_prompt else ""
+            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, antworte AUSSCHLIESSLICH mit einem JSON-Objekt in diesem Format: {\"type\": \"worksheet_creation\", \"content\": \"MARKDOWN_INHALT\"}. Schreibe keinen anderen Text."
 
             # Prepare messages with chat history
             messages = [
@@ -286,16 +288,38 @@ def ask():
                     full_answer += content
                     yield f"data: {content}\n\n"
 
-            # Check if AI wants to create .md file
-            if full_answer.lower().startswith("createmd:"):
+            # Check if AI wants to create .md file (JSON or Legacy)
+            md_content = None
+            
+            try:
+                # Try to parse as JSON first
+                # Handle potential leading/trailing whitespace or markdown code blocks if the model adds them
+                clean_answer = full_answer.strip()
+                if clean_answer.startswith("```json"):
+                    clean_answer = clean_answer[7:]
+                if clean_answer.startswith("```"):
+                    clean_answer = clean_answer[3:]
+                if clean_answer.endswith("```"):
+                    clean_answer = clean_answer[:-3]
+                
+                json_response = json.loads(clean_answer.strip())
+                if isinstance(json_response, dict) and json_response.get('type') == 'worksheet_creation':
+                    md_content = json_response.get('content')
+            except Exception as e:
+                # Not valid JSON or other error
+                pass
+            
+            if not md_content and full_answer.lower().startswith("createmd:"):
                 md_content = full_answer[9:]
+
+            if md_content:
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename = f"sheets/{worksheet_uuid}.md"
                 pdf_filename = f"sheets/{worksheet_uuid}.pdf"
                 download_answer = "Sie können ihr Arbeitsblatt nun downloaden."
 
                 print(md_content.strip())
-                with open(md_filename, "w") as f:
+                with open(md_filename, "w", encoding='utf-8') as f:
                     f.write(md_content.strip())
                 
                 # Convert MD to PDF using the external service
@@ -306,7 +330,7 @@ def ask():
                         f'markdown=@{md_filename}',
                         '--output',
                         pdf_filename,
-                        'http://192.168.178.94:8002'
+                        'https://md-to-pdf.fly.dev'
                     ]
                     result = subprocess.run(curl_command, capture_output=True, text=True, check=True)
                     print("Curl stdout:", result.stdout)
@@ -320,9 +344,11 @@ def ask():
                     return
 
                 # Save assistant answer and worksheet filename to database
-                save_chat_message(user_id, chat_session_id, 'assistant', download_answer, worksheet_filename=pdf_filename)
+                # Store only the basename in the database for cleaner paths
+                pdf_basename = os.path.basename(pdf_filename)
+                save_chat_message(user_id, chat_session_id, 'assistant', download_answer, worksheet_filename=pdf_basename)
                 yield f"data: {download_answer}\n\n"
-                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_filename}\n\n" # Special tag for frontend
+                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n" # Special tag for frontend
             else:
                 # Save full assistant answer to database
                 save_chat_message(user_id, chat_session_id, 'assistant', full_answer)
@@ -364,6 +390,16 @@ def get_current_chat_history():
 
     chat_history = get_chat_history(user_id, chat_session_id)
     return jsonify({'chat_history': chat_history})
+
+@app.route('/download-worksheet/<filename>')
+def download_sheet(filename):
+    try:
+        # Sanitize filename to prevent directory traversal
+        filename = os.path.basename(filename)
+        return send_file(os.path.join('sheets', filename), as_attachment=True)
+    except Exception as e:
+        print(f"Error sending file: {e}")
+        return abort(404)
 
 @app.route('/')
 def index():
