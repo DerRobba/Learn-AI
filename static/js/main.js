@@ -187,7 +187,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const content = event.data;
             console.log(content);
             if (content.startsWith("WORKSHEET_DOWNLOAD_LINK:")) {
-                const worksheet_filename = content.substring("WORKSHEET_DOWNLOAD_LINK:".length);
+                let worksheet_filename = content.substring("WORKSHEET_DOWNLOAD_LINK:".length);
+                // Clean filename just in case
+                worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
+                
+                // Clear the previous content (which might be the raw JSON or command)
+                const pTag = botMessageElement.querySelector('p');
+                if (pTag) {
+                    pTag.innerHTML = 'Ihr Arbeitsblatt wurde erstellt.';
+                }
+
                 const downloadButton = document.createElement('a');
                 downloadButton.href = `/download-worksheet/${worksheet_filename}`;
                 downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
@@ -381,6 +390,9 @@ document.addEventListener('DOMContentLoaded', function() {
         chatHistory.appendChild(messageElement);
 
         if (worksheet_filename) {
+            // Clean filename just in case
+            worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
+
             const downloadButton = document.createElement('a');
             downloadButton.href = `/download-worksheet/${worksheet_filename}`;
             downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
