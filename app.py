@@ -324,23 +324,23 @@ def ask():
                 
                 # Convert MD to PDF using the external service
                 try:
-                    curl_command = [
-                        'curl',
-                        '--data-urlencode',
-                        f'markdown=@{md_filename}',
-                        '--output',
-                        pdf_filename,
-                        'https://md-to-pdf.fly.dev'
-                    ]
-                    result = subprocess.run(curl_command, capture_output=True, text=True, check=True)
-                    print("Curl stdout:", result.stdout)
-                    print("Curl stderr:", result.stderr)
-                except subprocess.CalledProcessError as e:
-                    print(f"Curl command failed with error: {e}")
-                    print("Curl stdout:", e.stdout)
-                    print("Curl stderr:", e.stderr)
-                    # Optionally, handle the error more gracefully, e.g., yield an error message to the frontend
-                    yield "data: Fehler beim Erstellen des Arbeitsblatts. Bitte versuchen Sie es später erneut.\n\n"
+                    # Use requests instead of curl for better reliability
+                    response = requests.post(
+                        'https://md-to-pdf.fly.dev',
+                        data={'markdown': md_content.strip()},
+                        timeout=30
+                    )
+                    response.raise_for_status()
+                    
+                    with open(pdf_filename, 'wb') as f:
+                        f.write(response.content)
+                        
+                    print(f"PDF generated successfully: {pdf_filename}")
+                    
+                except requests.exceptions.RequestException as e:
+                    print(f"PDF generation failed: {e}")
+                    # Optionally, handle the error more gracefully
+                    yield "data: Fehler beim Erstellen des Arbeitsblatts (PDF-Service nicht erreichbar). Bitte versuchen Sie es später erneut.\n\n"
                     return
 
                 # Save assistant answer and worksheet filename to database
