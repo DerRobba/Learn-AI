@@ -6,6 +6,7 @@
     <title>{{ assignment.title }} - Learn-AI</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
@@ -97,7 +98,7 @@
                         <span class="material-symbols-outlined text-blue-600">description</span>
                         <span>Aufgabenbeschreibung</span>
                     </h3>
-                    <div class="text-gray-700 leading-relaxed whitespace-pre-wrap">{{ assignment.description }}</div>
+                    <div id="assignment-description" class="text-gray-700 leading-relaxed">{{ assignment.description }}</div>
                 </div>
             </div>
 
@@ -206,5 +207,13 @@
         <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
         <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const desc = document.getElementById('assignment-description');
+            if (desc) {
+                desc.innerHTML = marked.parse(desc.textContent);
+            }
+        });
+    </script>
 </body>
 </html>

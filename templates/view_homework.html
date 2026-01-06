@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ homework.title }} - Learn-AI</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes blob {
+            0% {
+                transform: translate(0px, 0px) scale(1);
+            }
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+            100% {
+                transform: translate(0px, 0px) scale(1);
+            }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+            animation-delay: 4s;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400">
+    <!-- Header -->
+    <header class="bg-white/95 backdrop-blur-xl shadow-lg border-b border-white/20">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-xl">neurology</span>
+                </div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
+                    Intelligenter Lernassistent
+                </h1>
+            </div>
+
+            <!-- Back Button -->
+            <a href="{{ url_for('index') }}" class="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors duration-300">
+                <span class="material-symbols-outlined">arrow_back</span>
+                <span class="font-medium">Zurück</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto p-6">
+        <!-- Homework Card -->
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 mb-6 card-animation">
+            <!-- Header -->
+            <div class="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-gradient-to-r {% if homework.completed %}from-green-500 to-emerald-500{% else %}from-blue-500 to-indigo-500{% endif %} rounded-2xl flex items-center justify-center shadow-lg">
+                        <span class="material-symbols-outlined text-white text-3xl">
+                            {% if homework.completed %}check_circle{% else %}home_work{% endif %}
+                        </span>
+                    </div>
+                    <div>
+                        <h2 class="text-3xl font-bold {% if homework.completed %}text-green-800 line-through{% else %}text-gray-900{% endif %}">{{ homework.title }}</h2>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            {% if homework.subject_name %}
+                                <span class="px-3 py-1 rounded-full text-sm font-medium {% if homework.completed %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                                    {{ homework.subject_name }}
+                                </span>
+                            {% endif %}
+                            <span class="text-gray-600 text-sm flex items-center">
+                                <span class="material-symbols-outlined text-sm mr-1">event</span>
+                                Fällig am {{ homework.due_date }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center space-x-2">
+                    <a href="{{ url_for('edit_homework_route', homework_id=homework.id) }}" class="flex items-center justify-center w-10 h-10 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors duration-300" title="Bearbeiten">
+                        <span class="material-symbols-outlined">edit</span>
+                    </a>
+                    <button id="toggle-status-btn" class="flex items-center space-x-2 px-4 py-2 rounded-xl transition-colors duration-300 font-medium {% if homework.completed %}bg-gray-100 text-gray-700 hover:bg-gray-200{% else %}bg-green-600 text-white hover:bg-green-700 shadow-lg{% endif %}">
+                        <span class="material-symbols-outlined">
+                            {% if homework.completed %}undo{% else %}check{% endif %}
+                        </span>
+                        <span>{% if homework.completed %}Als offen markieren{% else %}Erledigt{% endif %}</span>
+                    </button>
+                    <button id="delete-btn" class="flex items-center justify-center w-10 h-10 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-colors duration-300">
+                        <span class="material-symbols-outlined">delete</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Notes Section -->
+            <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-8 border border-purple-100 card-animation" style="animation-delay: 0.2s;">
+                <h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                    <span class="material-symbols-outlined text-purple-600">description</span>
+                    <span>Notizen & Details</span>
+                </h3>
+                {% if homework.notes %}
+                    <div id="notes-content" class="prose prose-purple max-w-none text-gray-700 leading-relaxed bg-white/60 p-6 rounded-xl border border-purple-100">
+                        {{ homework.notes }}
+                    </div>
+                {% else %}
+                    <p class="text-gray-500 italic text-center py-8">Keine zusätzlichen Notizen vorhanden.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Decorative Elements -->
+    <div class="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden -z-10">
+        <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+        <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+        <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const notesContent = document.getElementById('notes-content');
+            if (notesContent) {
+                notesContent.innerHTML = marked.parse(notesContent.textContent);
+            }
+
+            const toggleBtn = document.getElementById('toggle-status-btn');
+            const deleteBtn = document.getElementById('delete-btn');
+            const homeworkId = "{{ homework.id }}";
+
+            toggleBtn.addEventListener('click', () => {
+                fetch(`/toggle-homework/${homeworkId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    }
+                });
+            });
+
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Möchten Sie diese Hausaufgabe wirklich löschen?')) {
+                    fetch(`/delete-homework/${homeworkId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.href = "{{ url_for('index') }}";
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

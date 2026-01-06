@@ -3,11 +3,13 @@ import os
 import base64
 import uuid
 import json
+import re
+import traceback
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework
 
 load_dotenv()
 
@@ -112,9 +114,13 @@ def register_post():
     password_confirm = request.form.get('password_confirm')
     user_type = request.form.get('user_type')
     school = request.form.get('school')
+    agb_accept = request.form.get('agb_accept')
 
     if not username or not password or not password_confirm or not user_type or not school:
         return render_template('register.html', error='Alle Felder sind erforderlich.')
+
+    if not agb_accept:
+        return render_template('register.html', error='Du musst die AGB akzeptieren.')
 
     if password != password_confirm:
         return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
@@ -234,12 +240,30 @@ def ask():
 
     def generate():
         try:
+            from datetime import datetime
+            # Get current date info
+            now = datetime.now()
+            current_date_str = now.strftime("%Y-%m-%d")
+            current_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][now.weekday()]
+
             # Get existing chat history for context
             chat_history = get_chat_history(user_id, chat_session_id)
+            
+            # Get current homework and subjects for context (limit to recent 15)
+            current_homework = get_homework_for_user(user_id)[:15]
+            current_subjects = get_subjects(user_id)
 
             # Build conversation context from database
             conversation_context = system_prompt if system_prompt else ""
-            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, antworte AUSSCHLIESSLICH mit einem JSON-Objekt in diesem Format: {\"type\": \"worksheet_creation\", \"content\": \"MARKDOWN_INHALT\"}. Schreibe keinen anderen Text."
+            conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
+            conversation_context += f"\n\nDeine aktuelle Hausaufgaben-Liste: {json.dumps(current_homework)}"
+            conversation_context += f"\nDeine verfügbaren Fächer: {json.dumps(current_subjects)}"
+            conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben erstellen, bearbeiten oder löschen."
+            conversation_context += "\nWenn du eine Aktion durchführst, schreibe ZUERST deine Antwort an den Benutzer und füge AM ENDE deiner Nachricht die Aktion im JSON-Format zwischen <action> und </action> Tags ein."
+            conversation_context += "\nBeispiel: Ich habe Mathe hinzugefügt. <action>{\"type\": \"homework_action\", \"action\": \"create\", \"title\": \"Mathe S.12\", \"due_date\": \"YYYY-MM-DD\", \"subject_name\": \"Mathe\"}</action>"
+            conversation_context += "\n\nWICHTIG: Nutze für 'due_date' IMMER das Format YYYY-MM-DD. Wenn der Benutzer 'morgen' sagt, berechne das Datum basierend auf HEUTE."
+            conversation_context += "\n\nWICHTIG: Benutze NIEMALS JSON-Code außerhalb von <action> Tags. Erstelle neue Fächer automatisch, indem du den 'subject_name' angibst."
+            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"MARKDOWN_INHALT\"}</action>."
 
             # Prepare messages with chat history
             messages = [
@@ -288,30 +312,81 @@ def ask():
                     full_answer += content
                     yield f"data: {content}\n\n"
 
-            # Check if AI wants to create .md file (JSON or Legacy)
+            # Inside generate() loop, after full_answer is collected:
+            homework_results = []
             md_content = None
             
-            try:
-                # Try to parse as JSON first
-                # Handle potential leading/trailing whitespace or markdown code blocks if the model adds them
-                clean_answer = full_answer.strip()
-                if clean_answer.startswith("```json"):
-                    clean_answer = clean_answer[7:]
-                if clean_answer.startswith("```"):
-                    clean_answer = clean_answer[3:]
-                if clean_answer.endswith("```"):
-                    clean_answer = clean_answer[:-3]
-                
-                json_response = json.loads(clean_answer.strip())
-                if isinstance(json_response, dict) and json_response.get('type') == 'worksheet_creation':
-                    md_content = json_response.get('content')
-            except Exception as e:
-                # Not valid JSON or other error
-                pass
+            # Find all <action> blocks
+            action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL)
             
-            if not md_content and full_answer.lower().startswith("createmd:"):
-                md_content = full_answer[9:]
+            # Fallback to general JSON find if no tags were used (for robustness)
+            if not action_blocks:
+                action_blocks = re.findall(r'(\{.*?\}|\[.*?\])', full_answer, re.DOTALL)
+            
+            for block in action_blocks:
+                try:
+                    res_data = json.loads(block)
+                    if not isinstance(res_data, list):
+                        res_list = [res_data]
+                    else:
+                        res_list = res_data
+                        
+                    for res in res_list:
+                        if not isinstance(res, dict): continue
+                        
+                        if res.get('type') == 'homework_action':
+                            action = res.get('action')
+                            hw_id = res.get('id')
+                            
+                            if action == 'create':
+                                s_name = res.get('subject_name', '').strip()
+                                s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
+                                if s_name and s_id is None:
+                                    s_id = create_subject(user_id, s_name)
+                                    if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
+                                
+                                create_homework(user_id, res.get('title'), res.get('due_date'), res.get('notes'), s_id)
+                                homework_results.append(f"'{res.get('title')}' erstellt")
+                            elif action == 'update' and hw_id:
+                                s_name = res.get('subject_name', '').strip()
+                                s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
+                                if s_name and s_id is None:
+                                    s_id = create_subject(user_id, s_name)
+                                    if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
+                                
+                                update_homework(hw_id, user_id, res.get('title'), res.get('due_date'), res.get('notes'), s_id)
+                                homework_results.append(f"'{res.get('title')}' aktualisiert")
+                            elif action == 'toggle' and hw_id:
+                                toggle_homework_status(hw_id, user_id)
+                                homework_results.append("Status geändert")
+                            elif action == 'delete' and hw_id:
+                                delete_homework(hw_id)
+                                homework_results.append("gelöscht")
+                            elif action == 'deleteAll':
+                                delete_all_homework(user_id)
+                                homework_results.append("alle Hausaufgaben gelöscht")
+                        elif res.get('type') == 'worksheet_creation':
+                             md_content = res.get('content')
+                except Exception:
+                    continue
 
+            # Clean up message for storage (remove all JSON and tags)
+            display_text = re.sub(r'<action>[\s\S]*?</?action>', '', full_answer, flags=re.IGNORECASE)
+            display_text = re.sub(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', '', display_text)
+            # Remove any stray action tags that might be left
+            display_text = re.sub(r'</?action/?>', '', display_text, flags=re.IGNORECASE)
+            display_text = display_text.strip()
+            
+            # If AI was silent but did things, tell the user
+            if not display_text and homework_results:
+                display_text = "Erledigt: " + ", ".join(homework_results)
+            
+            if display_text:
+                save_chat_message(user_id, chat_session_id, 'assistant', display_text)
+            
+            if homework_results:
+                yield "data: HOMEWORK_UPDATED\n\n"
+            
             if md_content:
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename = f"sheets/{worksheet_uuid}.md"
@@ -339,25 +414,21 @@ def ask():
                     
                 except requests.exceptions.RequestException as e:
                     print(f"PDF generation failed: {e}")
-                    # Optionally, handle the error more gracefully
                     yield "data: Fehler beim Erstellen des Arbeitsblatts (PDF-Service nicht erreichbar). Bitte versuchen Sie es später erneut.\n\n"
                     return
 
                 # Save assistant answer and worksheet filename to database
-                # Store only the basename in the database for cleaner paths
                 pdf_basename = os.path.basename(pdf_filename)
                 save_chat_message(user_id, chat_session_id, 'assistant', download_answer, worksheet_filename=pdf_basename)
                 yield f"data: {download_answer}\n\n"
                 yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n" # Special tag for frontend
-            else:
-                # Save full assistant answer to database
-                save_chat_message(user_id, chat_session_id, 'assistant', full_answer)
 
         except requests.exceptions.RequestException as e:
-            print(f"Error communicating with Ollama API: {e}")
-            yield "data: Entschuldigung, es gab ein Problem mit der Verbindung zu Ollama. Bitte stellen Sie sicher, dass Ollama läuft und das Modell verfügbar ist.\n\n"
+            print(f"Error communicating with API: {e}")
+            yield "data: Entschuldigung, es gab ein Problem mit der Verbindung. Bitte stellen Sie sicher, dass der Dienst erreichbar ist.\n\n"
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
+            traceback.print_exc()
             yield "data: Ein unerwarteter Fehler ist aufgetreten.\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
@@ -418,8 +489,13 @@ def index():
     if 'chat_session_id' not in session:
         session['chat_session_id'] = str(uuid.uuid4())
 
+    user_id = session['user_id']
+    
+    # Cleanup old completed homework (24h)
+    delete_old_completed_homework(user_id)
+
     # Get user's chat sessions
-    user_sessions = get_user_chat_sessions(session['user_id'])
+    user_sessions = get_user_chat_sessions(user_id)
 
     # Get assignments
     assignments = []
@@ -430,13 +506,17 @@ def index():
         elif user_type == 'student':
             assignments = get_assignments_for_class(class_name, session.get('school'))
 
+    # Get homework
+    homework = get_homework_for_user(session['user_id'])
+
     return render_template('index.html',
                          user_type=user_type,
                          username=session.get('username'),
                          class_name=class_name,
                          chat_sessions=user_sessions,
                          current_session_id=session.get('chat_session_id'),
-                         assignments=assignments)
+                         assignments=assignments,
+                         homework=homework)
 
 @app.route('/admin')
 def admin_dashboard():
@@ -474,6 +554,121 @@ def add_student_route():
         add_student_to_class(student_username, class_name)
 
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/create-homework', methods=['GET', 'POST'])
+def create_homework_route():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+
+    if request.method == 'POST':
+        title = request.form.get('title')
+        due_date = request.form.get('due_date')
+        notes = request.form.get('notes')
+        subject_id = request.form.get('subject_id')
+
+        if not title:
+            return render_template('create_homework.html', error='Titel ist erforderlich.', subjects=get_subjects(user_id))
+        
+        # Convert empty string to None for subject_id
+        if subject_id == '':
+            subject_id = None
+
+        create_homework(user_id, title, due_date, notes, subject_id)
+        return redirect(url_for('index'))
+
+    return render_template('create_homework.html', subjects=get_subjects(user_id))
+
+@app.route('/view-homework/<homework_id>')
+def view_homework(homework_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    homework = get_single_homework(homework_id)
+    if not homework:
+        return redirect(url_for('index'))
+
+    return render_template('view_homework.html', homework=homework)
+
+@app.route('/calendar')
+def calendar_route():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # We reuse get_homework_for_user to get all homework with due dates
+    homework = get_homework_for_user(session['user_id'])
+    
+    return render_template('calendar.html', homework=homework)
+
+@app.route('/edit-homework/<homework_id>', methods=['GET', 'POST'])
+def edit_homework_route(homework_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    homework = get_single_homework(homework_id)
+
+    if not homework or homework['user_id'] != user_id:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        title = request.form.get('title')
+        due_date = request.form.get('due_date')
+        notes = request.form.get('notes')
+        subject_id = request.form.get('subject_id')
+
+        if not title:
+            return render_template('edit_homework.html', homework=homework, subjects=get_subjects(user_id), error='Titel ist erforderlich.')
+        
+        if subject_id == '':
+            subject_id = None
+
+        update_homework(homework_id, user_id, title, due_date, notes, subject_id)
+        return redirect(url_for('view_homework', homework_id=homework_id))
+
+    return render_template('edit_homework.html', homework=homework, subjects=get_subjects(user_id))
+
+@app.route('/toggle-homework/<homework_id>', methods=['POST'])
+def toggle_homework_route(homework_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    toggle_homework_status(homework_id, session['user_id'])
+    return jsonify({'success': True})
+
+@app.route('/delete-homework/<homework_id>', methods=['POST'])
+def delete_homework_route(homework_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    delete_homework(homework_id)
+    return jsonify({'success': True})
+
+@app.route('/create-subject', methods=['POST'])
+def create_subject_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    name = request.json.get('name')
+    if not name:
+        return jsonify({'error': 'Name ist erforderlich'}), 400
+        
+    subject_id = create_subject(session['user_id'], name)
+    if subject_id:
+        return jsonify({'success': True, 'subject_id': subject_id, 'name': name})
+    else:
+        return jsonify({'error': 'Fach existiert bereits'}), 400
+
+@app.route('/delete-subject/<subject_id>', methods=['POST'])
+def delete_subject_route(subject_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+        
+    if delete_subject(subject_id, session['user_id']):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Fehler beim Löschen'}), 500
 
 
 

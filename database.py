@@ -56,6 +56,51 @@ def init_database():
         )
     ''')
 
+    # Create homework table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS homework (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            due_date TEXT,
+            notes TEXT,
+            subject_id INTEGER,
+            completed BOOLEAN DEFAULT 0,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (subject_id) REFERENCES subjects (id)
+        )
+    ''')
+
+    # Add columns to homework table if they don't exist
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN subject_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN completed BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN completed_at TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass
+
+    # Create subjects table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, name)
+        )
+    ''')
+
     # Create chat_history table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -433,3 +478,219 @@ def get_teacher_usernames_for_school(school):
     conn.close()
 
     return [t[0] for t in teachers]
+
+def create_homework(user_id, title, due_date, notes, subject_id=None):
+    """Create a new homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO homework (user_id, title, due_date, notes, subject_id) VALUES (?, ?, ?, ?, ?)',
+                      (user_id, title, due_date, notes, subject_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_homework_for_user(user_id):
+    """Get all homework for a given user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT h.id, h.title, h.due_date, h.notes, h.created_at, h.completed, s.name, h.subject_id
+        FROM homework h
+        LEFT JOIN subjects s ON h.subject_id = s.id
+        WHERE h.user_id = ?
+        ORDER BY h.completed ASC, h.due_date ASC
+    ''', (user_id,))
+    homework = cursor.fetchall()
+    conn.close()
+
+    return [{'id': h[0], 'title': h[1], 'due_date': h[2], 'notes': h[3], 'created_at': h[4], 'completed': bool(h[5]), 'subject_name': h[6], 'subject_id': h[7]} for h in homework]
+
+def get_single_homework(homework_id):
+    """Get a single homework entry by its ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT h.id, h.title, h.due_date, h.notes, h.created_at, h.completed, s.name, h.subject_id, h.user_id
+        FROM homework h
+        LEFT JOIN subjects s ON h.subject_id = s.id
+        WHERE h.id = ?
+    ''', (homework_id,))
+    homework = cursor.fetchone()
+    conn.close()
+
+    if homework:
+        return {
+            'id': homework[0], 
+            'title': homework[1], 
+            'due_date': homework[2], 
+            'notes': homework[3], 
+            'created_at': homework[4], 
+            'completed': bool(homework[5]), 
+            'subject_name': homework[6], 
+            'subject_id': homework[7],
+            'user_id': homework[8]
+        }
+    return None
+
+def update_homework(homework_id, user_id, title, due_date, notes, subject_id=None):
+    """Update an existing homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            UPDATE homework 
+            SET title = ?, due_date = ?, notes = ?, subject_id = ? 
+            WHERE id = ? AND user_id = ?
+        ''', (title, due_date, notes, subject_id, homework_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_homework(homework_id):
+    """Delete a homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM homework WHERE id = ?', (homework_id,))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_all_homework(user_id):
+    """Delete all homework for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM homework WHERE user_id = ?', (user_id,))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def toggle_homework_status(homework_id, user_id):
+    """Toggle the completion status of a homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Check current status
+        cursor.execute('SELECT completed FROM homework WHERE id = ? AND user_id = ?', (homework_id, user_id))
+        result = cursor.fetchone()
+        
+        if result:
+            current_status = bool(result[0])
+            new_status = not current_status
+            
+            if new_status:
+                # Marking as completed: set completed_at to current time
+                cursor.execute('UPDATE homework SET completed = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', (new_status, homework_id, user_id))
+            else:
+                # Marking as not completed: clear completed_at
+                cursor.execute('UPDATE homework SET completed = ?, completed_at = NULL WHERE id = ? AND user_id = ?', (new_status, homework_id, user_id))
+            
+            conn.commit()
+            return True
+        return False
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_old_completed_homework(user_id):
+    """Delete homework that has been completed for more than 24 hours"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Delete homework where completed is true and completed_at is older than 24 hours
+        cursor.execute('''
+            DELETE FROM homework 
+            WHERE user_id = ? 
+            AND completed = 1 
+            AND completed_at < datetime('now', '-1 day')
+        ''', (user_id,))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        conn.close()
+
+def get_subject_id_by_name(user_id, name):
+    """Get subject ID by name for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM subjects WHERE user_id = ? AND name = ?', (user_id, name))
+    subject = cursor.fetchone()
+    conn.close()
+    return subject[0] if subject else None
+
+def create_subject(user_id, name):
+    """Create a new subject for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO subjects (user_id, name) VALUES (?, ?)', (user_id, name))
+        subject_id = cursor.lastrowid
+        conn.commit()
+        return subject_id
+    except sqlite3.IntegrityError:
+        return False  # Subject already exists
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_subjects(user_id):
+    """Get all subjects for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC', (user_id,))
+    subjects = cursor.fetchall()
+    conn.close()
+
+    return [{'id': s[0], 'name': s[1]} for s in subjects]
+
+def delete_subject(subject_id, user_id):
+    """Delete a subject"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # First set subject_id to NULL for any homework with this subject
+        cursor.execute('UPDATE homework SET subject_id = NULL WHERE subject_id = ? AND user_id = ?', (subject_id, user_id))
+        
+        # Then delete the subject
+        cursor.execute('DELETE FROM subjects WHERE id = ? AND user_id = ?', (subject_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
