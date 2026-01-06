@@ -40,54 +40,32 @@
             opacity: 0;
         }
 
-        .form-field:nth-child(1) {
-            animation-delay: 0.2s;
-        }
-
-        .form-field:nth-child(2) {
-            animation-delay: 0.4s;
-        }
-
-        .form-field:nth-child(3) {
-            animation-delay: 0.6s;
-        }
-
-        .form-field:nth-child(4) {
-            animation-delay: 0.8s;
-        }
+        .form-field:nth-child(1) { animation-delay: 0.1s; }
+        .form-field:nth-child(2) { animation-delay: 0.2s; }
+        .form-field:nth-child(3) { animation-delay: 0.3s; }
+        .form-field:nth-child(4) { animation-delay: 0.4s; }
+        .form-field:nth-child(5) { animation-delay: 0.5s; }
+        .form-field:nth-child(6) { animation-delay: 0.6s; }
 
         .register-card-animation {
             animation: fadeIn 0.5s ease-out forwards;
         }
 
         @keyframes blob {
-            0% {
-                transform: translate(0px, 0px) scale(1);
-            }
-            33% {
-                transform: translate(30px, -50px) scale(1.1);
-            }
-            66% {
-                transform: translate(-20px, 20px) scale(0.9);
-            }
-            100% {
-                transform: translate(0px, 0px) scale(1);
-            }
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
         }
-        .animate-blob {
-            animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-            animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-            animation-delay: 4s;
-        }
+        .animate-blob { animation: blob 7s infinite; }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
 
-        /* Better peer styles for radio buttons */
-        input[type="radio"]:checked + div {
-            transform: scale(1.02);
-        }
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center p-4">
@@ -121,179 +99,233 @@
                         <span class="material-symbols-outlined text-purple-600">person</span>
                         <span>Benutzername</span>
                     </label>
-                    <input
-                        type="text"
-                        id="username"
-                        name="username"
-                        required
-                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
-                        placeholder="Wähle einen Benutzernamen"
-                    >
+                    <input type="text" id="username" name="username" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Wähle einen Benutzernamen">
                 </div>
 
-                <!-- Password Field -->
-                <div class="space-y-2 form-field">
-                    <label for="password" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
-                        <span class="material-symbols-outlined text-purple-600">lock</span>
-                        <span>Passwort</span>
-                    </label>
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        required
-                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
-                        placeholder="Erstelle ein sicheres Passwort"
-                    >
+                <!-- Password Fields -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-2 form-field">
+                        <label for="password" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                            <span class="material-symbols-outlined text-purple-600">lock</span>
+                            <span>Passwort</span>
+                        </label>
+                        <input type="password" id="password" name="password" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Passwort">
+                    </div>
+                    <div class="space-y-2 form-field">
+                        <label for="password_confirm" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+                            <span class="material-symbols-outlined text-purple-600">lock</span>
+                            <span>Bestätigen</span>
+                        </label>
+                        <input type="password" id="password_confirm" name="password_confirm" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Bestätigen">
+                    </div>
                 </div>
-
-                <!-- Confirm Password Field -->
-                <div class="space-y-2 form-field">
-                    <label for="password_confirm" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
-                        <span class="material-symbols-outlined text-purple-600">lock</span>
-                        <span>Passwort bestätigen</span>
-                    </label>
-                    <input
-                        type="password"
-                        id="password_confirm"
-                        name="password_confirm"
-                        required
-                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
-                        placeholder="Gib dein Passwort erneut ein"
-                    >
+                <!-- Password Mismatch Error -->
+                <div id="pw-error" class="hidden flex items-center space-x-2 text-red-500 text-xs font-medium px-1">
+                    <span class="material-symbols-outlined text-sm">error</span>
+                    <span>Die Passwörter stimmen nicht überein.</span>
                 </div>
 
                 <!-- User Type Selection -->
                 <div class="space-y-3 form-field">
                     <label class="text-sm font-semibold text-gray-700">Ich bin:</label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <!-- IT-Admin Option -->
-                        <label class="cursor-pointer">
+                    <div class="grid grid-cols-3 gap-3">
+                        <label class="cursor-pointer group">
                             <input type="radio" name="user_type" value="it-admin" required class="sr-only peer">
-                            <div class="p-4 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all duration-300 peer-checked:bg-yellow-50 peer-checked:border-yellow-400 peer-checked:shadow-md hover:bg-gray-100">
-                                <div class="flex flex-col items-center space-y-2">
-                                    <span class="material-symbols-outlined text-yellow-600 text-2xl peer-checked:text-yellow-700">admin_panel_settings</span>
-                                    <span class="text-sm font-medium text-gray-700 peer-checked:text-yellow-700">IT-Admin</span>
-                                </div>
+                            <div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-yellow-50 peer-checked:border-yellow-400 hover:bg-gray-100">
+                                <span class="material-symbols-outlined text-yellow-600 text-xl block">admin_panel_settings</span>
+                                <span class="text-[10px] sm:text-xs font-medium text-gray-700">Admin</span>
                             </div>
                         </label>
-
-                        <!-- Teacher Option -->
-                        <label class="cursor-pointer">
+                        <label class="cursor-pointer group">
                             <input type="radio" name="user_type" value="teacher" required class="sr-only peer">
-                            <div class="p-4 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all duration-300 peer-checked:bg-green-50 peer-checked:border-green-400 peer-checked:shadow-md hover:bg-gray-100">
-                                <div class="flex flex-col items-center space-y-2">
-                                    <span class="material-symbols-outlined text-green-600 text-2xl peer-checked:text-green-700">person_2</span>
-                                    <span class="text-sm font-medium text-gray-700 peer-checked:text-green-700">Lehrer</span>
-                                </div>
+                            <div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-green-50 peer-checked:border-green-400 hover:bg-gray-100">
+                                <span class="material-symbols-outlined text-green-600 text-xl block">person_2</span>
+                                <span class="text-[10px] sm:text-xs font-medium text-gray-700">Lehrer</span>
                             </div>
                         </label>
-
-                        <!-- Student Option -->
-                        <label class="cursor-pointer">
+                        <label class="cursor-pointer group">
                             <input type="radio" name="user_type" value="student" required class="sr-only peer">
-                            <div class="p-4 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all duration-300 peer-checked:bg-blue-50 peer-checked:border-blue-400 peer-checked:shadow-md hover:bg-gray-100">
-                                <div class="flex flex-col items-center space-y-2">
-                                    <span class="material-symbols-outlined text-blue-600 text-2xl peer-checked:text-blue-700">school</span>
-                                    <span class="text-sm font-medium text-gray-700 peer-checked:text-blue-700">Schüler</span>
-                                </div>
+                            <div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-blue-50 peer-checked:border-blue-400 hover:bg-gray-100">
+                                <span class="material-symbols-outlined text-blue-600 text-xl block">school</span>
+                                <span class="text-[10px] sm:text-xs font-medium text-gray-700">Schüler</span>
                             </div>
                         </label>
                     </div>
                 </div>
 
                 <!-- School Field -->
-                <div id="school-group" class="relative space-y-2 form-field pb-16">
+                <div id="school-group" class="relative space-y-2 form-field">
                     <label for="school" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
                         <span class="material-symbols-outlined text-purple-600">apartment</span>
                         <span>Schule</span>
                     </label>
-                    <input
-                        type="text"
-                        id="school"
-                        name="school"
-                        required
-                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
-                        placeholder="Name deiner Schule"
-                    >
+                    <input type="text" id="school" name="school" required autocomplete="off" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Name deiner Schule">
+                </div>
+
+                <!-- AGB Acceptance -->
+                <div class="space-y-2 form-field">
+                    <label class="flex items-start space-x-3 cursor-pointer">
+                        <input type="checkbox" id="agb_accept" name="agb_accept" required class="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 transition-colors">
+                        <div class="text-sm text-gray-600">
+                            Ich akzeptiere die <button type="button" id="open-agb-modal" class="text-purple-600 font-semibold hover:underline">Allgemeinen Geschäftsbedingungen (AGB)</button>
+                        </div>
+                    </label>
                 </div>
 
                 <!-- Register Button -->
-                <button
-                    type="submit"
-                    class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 px-6 rounded-xl hover:from-purple-700 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold"
-                >
+                <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white py-4 rounded-xl hover:from-purple-700 hover:to-pink-600 transition-all transform hover:scale-[1.02] shadow-lg font-bold">
                     <span class="material-symbols-outlined">person_add</span>
-                    <span>Registrieren</span>
+                    <span>Konto erstellen</span>
                 </button>
             </form>
 
-            <!-- Login Link -->
-            <div class="text-center mt-8 pt-6 border-t border-gray-200">
-                <p class="text-gray-600 text-sm">
-                    Bereits ein Konto?
-                    <a href="{{ url_for('login') }}" class="text-purple-600 hover:text-purple-700 font-semibold hover:underline transition-colors duration-300">
-                        Hier anmelden
-                    </a>
-                </p>
+            <div class="text-center mt-8 pt-6 border-t border-gray-200 text-sm text-gray-600">
+                Bereits ein Konto? <a href="{{ url_for('login') }}" class="text-purple-600 font-bold hover:underline">Anmelden</a>
             </div>
         </div>
+    </div>
 
-        <!-- Decorative Elements -->
-        <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-            <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-            <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
-            <div class="absolute top-40 left-40 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+    <!-- AGB Modal -->
+    <div id="agb-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col transform transition-all scale-95 opacity-0 agb-modal-content">
+            <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">AGB Learn-AI</h3>
+                <button id="close-agb-modal" class="p-2 hover:bg-gray-100 rounded-full transition-colors"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="p-8 overflow-y-auto custom-scrollbar text-gray-700 space-y-6">
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">1. Geltungsbereich</h4>
+                    <p>Diese AGB gelten für die Nutzung der App und WebApp Learn-AI.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">2. Beschreibung des Angebots</h4>
+                    <p>Learn-AI ist ein KI-gestützter Lernassistent für Schüler. Die KI unterstützt Nutzer beim Lernen, indem sie Denkwege, Strategien und Hilfestellungen erklärt.</p>
+                    <p class="mt-2 text-red-600 font-medium italic">Learn-AI ist nicht dafür gedacht, fertige Lösungen, Ergebnisse oder komplette Antworten auf Aufgaben bereitzustellen.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">3. Funktionsweise der KI</h4>
+                    <p>Learn-AI unterstützt Nutzer ausschließlich durch erklärende und leitende Hinweise, die zum eigenständigen Denken anregen. Direkte Lösungen oder fertige Ergebnisse werden nicht bereitgestellt.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">4. Arbeitsblätter</h4>
+                    <p>Learn-AI kann auf Anfrage Arbeitsblätter erstellen. Diese enthalten ausschließlich Aufgaben und Anleitungen, jedoch keine Lösungen.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">5. Nutzung auf eigene Verantwortung</h4>
+                    <p>Die Nutzung von Learn-AI erfolgt auf eigene Verantwortung. Die Inhalte ersetzen keinen Unterricht, keine Prüfungsvorbereitung unter Aufsicht und keine fachliche Beratung durch Lehrkräfte.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">6. Datenschutz</h4>
+                    <p>Learn-AI erhebt, speichert oder verarbeitet keine personenbezogenen Daten. Es findet kein Tracking, keine Analyse und keine Weitergabe von Daten an Dritte statt.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">7. Verfügbarkeit</h4>
+                    <p>Es besteht kein Anspruch auf ständige, fehlerfreie oder unterbrechungsfreie Verfügbarkeit des Angebots.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">8. Haftung</h4>
+                    <p>Für Schäden, die durch die Nutzung von Learn-AI entstehen, wird keine Haftung übernommen, außer bei Vorsatz oder grober Fahrlässigkeit.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">9. Änderungen</h4>
+                    <p>Diese AGB können jederzeit geändert werden. Maßgeblich ist die jeweils aktuelle Version.</p>
+                </section>
+                <section>
+                    <h4 class="font-bold text-gray-900 mb-2">10. Schlussbestimmungen</h4>
+                    <p>Es gilt deutsches Recht. Sollte eine Bestimmung dieser AGB unwirksam sein, bleibt die Wirksamkeit der übrigen Regelungen unberührt.</p>
+                </section>
+                <div class="pt-4 border-t border-gray-100 text-xs text-gray-400 text-center">Stand: 05. Januar 2026</div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 rounded-b-3xl">
+                <button id="confirm-agb" class="w-full bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all">Verstanden & Akzeptieren</button>
+            </div>
         </div>
     </div>
+
+    <!-- Decorative Blobs -->
+    <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div class="absolute -top-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply blur-xl opacity-70 animate-blob"></div>
+        <div class="absolute -bottom-40 -right-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const schoolInput = document.getElementById('school');
-            const schoolGroup = document.getElementById('school-group');
-            let suggestionsContainer = document.getElementById('school-suggestions');
-            if (!suggestionsContainer) {
-                suggestionsContainer = document.createElement('div');
-                suggestionsContainer.id = 'school-suggestions';
-                suggestionsContainer.className = 'absolute z-50 w-full bg-white border border-gray-200 rounded-xl mt-1 shadow-lg';
-                schoolGroup.appendChild(suggestionsContainer);
+            // AGB Modal Logic
+            const modal = document.getElementById('agb-modal');
+            const content = modal.querySelector('.agb-modal-content');
+            const agbCheckbox = document.getElementById('agb_accept');
+
+            document.getElementById('open-agb-modal').onclick = () => {
+                modal.classList.remove('hidden');
+                setTimeout(() => content.classList.add('scale-100', 'opacity-100'), 10);
+            };
+
+            const hideModal = () => {
+                content.classList.remove('scale-100', 'opacity-100');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+
+            document.getElementById('close-agb-modal').onclick = hideModal;
+            document.getElementById('confirm-agb').onclick = () => { agbCheckbox.checked = true; hideModal(); };
+            modal.onclick = (e) => { if (e.target === modal) hideModal(); };
+
+            // Password Match Validation
+            const password = document.getElementById('password');
+            const confirm = document.getElementById('password_confirm');
+            const errorMsg = document.getElementById('pw-error');
+            const submitBtn = document.querySelector('button[type="submit"]');
+            const form = document.querySelector('form');
+
+            function validatePasswords() {
+                if (confirm.value && password.value !== confirm.value) {
+                    errorMsg.classList.remove('hidden');
+                    confirm.classList.add('border-red-300', 'bg-red-50');
+                    return false;
+                } else {
+                    errorMsg.classList.add('hidden');
+                    confirm.classList.remove('border-red-300', 'bg-red-50');
+                    return true;
+                }
             }
 
+            password.oninput = validatePasswords;
+            confirm.oninput = validatePasswords;
+
+            form.onsubmit = (e) => {
+                if (!validatePasswords()) {
+                    e.preventDefault();
+                    confirm.focus();
+                }
+            };
+
+            // School Autocomplete
+            const schoolInput = document.getElementById('school');
+            const suggestions = document.createElement('div');
+            suggestions.className = 'absolute z-50 w-full bg-white border border-gray-200 rounded-xl mt-1 shadow-xl max-h-48 overflow-y-auto hidden';
+            schoolInput.parentElement.appendChild(suggestions);
+
             let schools = [];
+            fetch('/api/schools').then(r => r.json()).then(data => { schools = data; });
 
-            fetch('/api/schools')
-                .then(response => response.json())
-                .then(data => {
-                    schools = data;
-                });
-
-            schoolInput.addEventListener('input', () => {
-                const inputText = schoolInput.value.toLowerCase();
-                if (inputText.length === 0) {
-                    suggestionsContainer.innerHTML = '';
-                    return;
-                }
-
-                const filteredSchools = schools.filter(school => school.toLowerCase().includes(inputText));
-                
-                if (filteredSchools.length > 0) {
-                    suggestionsContainer.innerHTML = filteredSchools.map(school => `<div class="p-2 cursor-pointer hover:bg-gray-100">${school}</div>`).join('');
+            schoolInput.oninput = () => {
+                const val = schoolInput.value.toLowerCase();
+                const filtered = schools.filter(s => s.toLowerCase().includes(val));
+                if (val && filtered.length) {
+                    suggestions.innerHTML = filtered.map(s => `<div class="p-3 hover:bg-purple-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0">${s}</div>`).join('');
+                    suggestions.classList.remove('hidden');
                 } else {
-                    suggestionsContainer.innerHTML = '';
+                    suggestions.classList.add('hidden');
                 }
-            });
+            };
 
-            suggestionsContainer.addEventListener('click', (e) => {
+            suggestions.onclick = (e) => {
                 if (e.target.tagName === 'DIV') {
                     schoolInput.value = e.target.textContent;
-                    suggestionsContainer.innerHTML = '';
+                    suggestions.classList.add('hidden');
                 }
-            });
+            };
 
-            document.addEventListener('click', (e) => {
-                if (e.target !== schoolInput) {
-                    suggestionsContainer.innerHTML = '';
-                }
-            });
+            document.onclick = (e) => { if (e.target !== schoolInput) suggestions.classList.add('hidden'); };
         });
     </script>
 </body>

@@ -18,14 +18,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.getElementById('main-content');
     const sidebarMenuBtn = document.getElementById('sidebar-menu-btn');
-    const closeSidebarBtn = document.getElementById('close-sidebar');
     const mobileOverlay = document.getElementById('mobile-overlay');
 
     // Sidebar Tabs
     const chatsTabBtn = document.getElementById('chats-tab-btn');
     const assignmentsTabBtn = document.getElementById('assignments-tab-btn');
+    const homeworkTabBtn = document.getElementById('homework-tab-btn');
     const chatSessionsContainer = document.getElementById('chat-sessions-container');
     const assignmentListContainer = document.getElementById('assignment-list-container');
+    const homeworkListContainer = document.getElementById('homework-list-container');
 
     function toggleSidebar() {
         const isOpen = sidebar.classList.contains('translate-x-0');
@@ -61,10 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (closeSidebarBtn) {
-        closeSidebarBtn.addEventListener('click', toggleSidebar);
-    }
-
     if (mobileOverlay) {
         mobileOverlay.addEventListener('click', toggleSidebar);
     }
@@ -97,8 +94,12 @@ document.addEventListener('DOMContentLoaded', function() {
             assignmentsTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
             assignmentsTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
 
+            homeworkTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
+            homeworkTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
+
             chatSessionsContainer.classList.remove('hidden');
             assignmentListContainer.classList.add('hidden');
+            homeworkListContainer.classList.add('hidden');
         });
     }
 
@@ -110,8 +111,29 @@ document.addEventListener('DOMContentLoaded', function() {
             chatsTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
             chatsTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
 
+            homeworkTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
+            homeworkTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
+
             assignmentListContainer.classList.remove('hidden');
             chatSessionsContainer.classList.add('hidden');
+            homeworkListContainer.classList.add('hidden');
+        });
+    }
+
+    if (homeworkTabBtn) {
+        homeworkTabBtn.addEventListener('click', () => {
+            homeworkTabBtn.classList.add('bg-purple-100', 'text-purple-700');
+            homeworkTabBtn.classList.remove('text-gray-500', 'hover:bg-gray-100');
+
+            chatsTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
+            chatsTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
+
+            assignmentsTabBtn.classList.add('text-gray-500', 'hover:bg-gray-100');
+            assignmentsTabBtn.classList.remove('bg-purple-100', 'text-purple-700');
+
+            homeworkListContainer.classList.remove('hidden');
+            chatSessionsContainer.classList.add('hidden');
+            assignmentListContainer.classList.add('hidden');
         });
     }
 
@@ -202,11 +224,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
                 downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
                 botMessageElement.querySelector('.flex-1').appendChild(downloadButton);
+            } else if (content === "HOMEWORK_UPDATED") {
+                // Reload or update specific UI part
+                setTimeout(() => location.reload(), 1500);
             } else if (content.toLowerCase().startsWith("createmd:")) {
                 // Do nothing, hide this from the user
             } else {
                 fullAnswer += content;
-                botMessageElement.querySelector('p').innerHTML = marked.parse(fullAnswer);
+                // Remove action tags and content from display (robust version)
+                let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, '');
+                displayHTML = displayHTML.replace(/<action[\s\S]*$/gi, ''); // Hide partial tag during streaming
+                
+                // Also remove raw JSON objects/arrays from display
+                displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, '');
+                displayHTML = displayHTML.replace(/[\{\[]\s*$/g, ''); // Hide partial JSON during streaming
+
+                // Final cleanup for stray tag fragments
+                displayHTML = displayHTML.replace(/<\/action\/?>/gi, '');
+                
+                botMessageElement.querySelector('p').innerHTML = marked.parse(displayHTML.trim());
             }
             scrollToBottom();
         };
@@ -560,7 +596,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
                                         <span class="text-xs text-gray-500">Jetzt</span>
                                     </div>
-                                    <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                                    <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen! Ich werde dir nie die Lösung verraten, sondern dir helfen sie selbst herauszufinden.</p>
                                 </div>
                             </div>
                         `;
@@ -591,11 +627,84 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteChatOption = document.getElementById('delete-chat');
     const assignmentContextMenu = document.getElementById('assignment-context-menu');
     const deleteAssignmentOption = document.getElementById('delete-assignment');
+    const homeworkContextMenu = document.getElementById('homework-context-menu');
+    const deleteHomeworkOption = document.getElementById('delete-homework');
 
     let activeSessionId = null;
     let activeAssignmentId = null;
+    let activeHomeworkId = null;
 
     const userType = document.getElementById('user-type').value;
+
+    if (homeworkListContainer) {
+        // Toggle completion status
+        homeworkListContainer.addEventListener('click', (e) => {
+            const toggleBtn = e.target.closest('.toggle-homework-btn');
+            if (toggleBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const homeworkItem = toggleBtn.closest('.homework-item');
+                const homeworkId = homeworkItem.dataset.id;
+                
+                fetch(`/toggle-homework/${homeworkId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Toggle local UI state without reload
+                        const isCompleted = homeworkItem.classList.contains('bg-green-50');
+                        const title = homeworkItem.querySelector('.homework-title');
+                        const icon = toggleBtn.querySelector('.material-symbols-outlined');
+                        const badge = homeworkItem.querySelector('.text-xs.px-2');
+
+                        if (isCompleted) {
+                            // Mark as not completed
+                            homeworkItem.classList.remove('bg-green-50', 'border-green-200');
+                            homeworkItem.classList.add('bg-gray-50', 'border-transparent');
+                            title.classList.remove('text-green-800', 'line-through');
+                            title.classList.add('text-gray-800');
+                            icon.classList.remove('text-green-600');
+                            icon.classList.add('text-gray-400');
+                            icon.textContent = 'radio_button_unchecked';
+                            toggleBtn.title = 'Erledigt';
+                            if (badge) {
+                                badge.classList.remove('bg-green-100', 'text-green-700');
+                                badge.classList.add('bg-blue-100', 'text-blue-700');
+                            }
+                        } else {
+                            // Mark as completed
+                            homeworkItem.classList.add('bg-green-50', 'border-green-200');
+                            homeworkItem.classList.remove('bg-gray-50', 'border-transparent');
+                            title.classList.add('text-green-800', 'line-through');
+                            title.classList.remove('text-gray-800');
+                            icon.classList.add('text-green-600');
+                            icon.classList.remove('text-gray-400');
+                            icon.textContent = 'check_circle';
+                            toggleBtn.title = 'Als offen markieren';
+                            if (badge) {
+                                badge.classList.add('bg-green-100', 'text-green-700');
+                                badge.classList.remove('bg-blue-100', 'text-blue-700');
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        // Context Menu
+        homeworkListContainer.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const homeworkItem = e.target.closest('.homework-item');
+            if (homeworkItem) {
+                activeHomeworkId = homeworkItem.dataset.id;
+                homeworkContextMenu.classList.remove('hidden');
+                homeworkContextMenu.style.top = `${e.pageY}px`;
+                homeworkContextMenu.style.left = `${e.pageX}px`;
+            }
+        });
+    }
 
     if (chatSessionsContainer) {
         chatSessionsContainer.addEventListener('contextmenu', (e) => {
@@ -638,6 +747,7 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('click', () => {
         if (chatContextMenu) chatContextMenu.classList.add('hidden');
         if (assignmentContextMenu) assignmentContextMenu.classList.add('hidden');
+        if (homeworkContextMenu) homeworkContextMenu.classList.add('hidden');
     });
 
     if (renameChatOption) {
@@ -688,6 +798,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (activeAssignmentId) {
                 if (confirm('Möchten Sie diese Aufgabe wirklich löschen?')) {
                     fetch(`/delete-assignment/${activeAssignmentId}`, { method: 'POST' })
+                    .then(() => location.reload());
+                }
+            }
+        });
+    }
+
+    if (deleteHomeworkOption) {
+        deleteHomeworkOption.addEventListener('click', () => {
+            if (activeHomeworkId) {
+                if (confirm('Möchten Sie diese Hausaufgabe wirklich löschen?')) {
+                    fetch(`/delete-homework/${activeHomeworkId}`, { method: 'POST' })
                     .then(() => location.reload());
                 }
             }
