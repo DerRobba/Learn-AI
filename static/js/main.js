@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
                     <span class="text-xs text-gray-500">${formatTime(time)}</span>
                 </div>
-                <p class="text-gray-700 text-sm leading-relaxed"></p>
+                <div class="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none"></div>
             </div>
         `;
 
@@ -213,17 +213,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Clean filename just in case
                 worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
                 
-                // Clear the previous content (which might be the raw JSON or command)
-                const pTag = botMessageElement.querySelector('p');
-                if (pTag) {
-                    pTag.innerHTML = 'Ihr Arbeitsblatt wurde erstellt.';
-                }
-
                 const downloadButton = document.createElement('a');
                 downloadButton.href = `/download-worksheet/${worksheet_filename}`;
                 downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
                 downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
                 botMessageElement.querySelector('.flex-1').appendChild(downloadButton);
+            } else if (content.startsWith("SESSION_TITLE:")) {
+                const newTitle = content.substring("SESSION_TITLE:".length);
+                // Update title in sidebar if current session matches
+                // We can't easily get the current session ID here globally without checking active class
+                // But we can reload the page or try to find the active session element
+                const activeSession = document.querySelector('.chat-session.bg-purple-100');
+                if (activeSession) {
+                    const titleEl = activeSession.querySelector('.session-title');
+                    if (titleEl) titleEl.textContent = newTitle;
+                }
             } else if (content === "HOMEWORK_UPDATED") {
                 // Reload or update specific UI part
                 setTimeout(() => location.reload(), 1500);
@@ -231,18 +235,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Do nothing, hide this from the user
             } else {
                 fullAnswer += content;
-                // Remove action tags and content from display (robust version)
-                let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, '');
-                displayHTML = displayHTML.replace(/<action[\s\S]*$/gi, ''); // Hide partial tag during streaming
                 
-                // Also remove raw JSON objects/arrays from display
-                displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, '');
-                displayHTML = displayHTML.replace(/[\{\[]\s*$/g, ''); // Hide partial JSON during streaming
+                // Remove finished action tags and replace with a single space
+                let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, ' ');
+                
+                // If we are currently inside an action tag, hide the partial tag 
+                // but keep a space to prevent text clumping
+                displayHTML = displayHTML.replace(/<action[\s\S]*$/gi, ' '); 
+                
+                // Also remove raw JSON objects/arrays and replace with space
+                displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, ' ');
+                displayHTML = displayHTML.replace(/[\{\[]\s*$/g, ' '); 
+
+                // Remove worksheet command
+                displayHTML = displayHTML.replace(/createmd:[\s\S]*$/gi, '');
 
                 // Final cleanup for stray tag fragments
-                displayHTML = displayHTML.replace(/<\/action\/?>/gi, '');
+                displayHTML = displayHTML.replace(/<\/action\/?>/gi, ' ');
+                displayHTML = displayHTML.replace(/action>/gi, ' ');
                 
-                botMessageElement.querySelector('p').innerHTML = marked.parse(displayHTML.trim());
+                // Collapse multiple spaces into one, but don't trim() yet to allow trailing spaces from AI
+                displayHTML = displayHTML.replace(/\s+/g, ' ');
+                
+                botMessageElement.querySelector('.prose').innerHTML = marked.parse(displayHTML);
             }
             scrollToBottom();
         };
@@ -267,21 +282,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (chatInput) {
         const sendButton = document.getElementById('send-button');
-
-        function sendMessage() {
-            const message = chatInput.value.trim();
-            if (message) {
-                addUserMessage(message);
-                sendToServer(message);
-                chatInput.value = '';
-                chatInput.style.height = 'auto';
-                
-                if (sendButton && recordButton) {
-                    recordButton.classList.remove('hidden');
-                    sendButton.classList.add('hidden');
-                }
-            }
-        }
 
         if (sendButton) {
             sendButton.addEventListener('click', sendMessage);
@@ -411,6 +411,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
+        
+        // Parse markdown content
+        const parsedMessage = marked.parse(message);
+
         messageElement.innerHTML = `
             <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <span class="material-symbols-outlined text-white text-lg">adb</span>
@@ -420,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
                     <span class="text-xs text-gray-500">${formatTime(time)}</span>
                 </div>
-                <p class="text-gray-700 text-sm leading-relaxed">${message}</p>
+                <div class="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none">${parsedMessage}</div>
             </div>
         `;
         chatHistory.appendChild(messageElement);
@@ -483,7 +487,12 @@ document.addEventListener('DOMContentLoaded', function() {
             chatInput.style.height = 'auto';
             
             if (uploadedImage) {
-                removeButton.click();
+                // Manually clear UI state without triggering server cache clear
+                uploadedImage = null;
+                previewImage.src = '';
+                imagePreview.classList.add('hidden');
+                imageInput.value = '';
+                cachedImageIndicator.classList.add('hidden');
             }
 
             if (sendButton && recordButton) {
@@ -580,9 +589,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.chat_history && data.chat_history.length > 0) {
                         data.chat_history.forEach(msg => {
                             if (msg.message_type === 'user') {
-                                addUserMessage(msg.content, msg.created_at);
+                                addUserMessage(msg.content, msg.created_at, msg.image_data);
                             } else if (msg.message_type === 'assistant') {
-                                addBotMessage(msg.content, msg.created_at);
+                                addBotMessage(msg.content, msg.created_at, msg.worksheet_filename);
                             }
                         });
                     } else {
@@ -629,6 +638,217 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteAssignmentOption = document.getElementById('delete-assignment');
     const homeworkContextMenu = document.getElementById('homework-context-menu');
     const deleteHomeworkOption = document.getElementById('delete-homework');
+
+    // Settings & Memories Logic
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsView = document.getElementById('settings-view');
+    const settingsHome = document.getElementById('settings-home');
+    const memoriesSection = document.getElementById('memories-section');
+    const settingsTitle = document.getElementById('settings-title');
+    
+    const chatView = document.getElementById('chat-view');
+    const backToChatBtn = document.getElementById('back-to-chat-btn');
+    const backToSettingsHomeBtn = document.getElementById('back-to-settings-home-btn');
+    const closeSettingsBtn = document.getElementById('close-settings-btn');
+    
+    const openMemoriesBtn = document.getElementById('open-memories-btn');
+    const mathSolverToggle = document.getElementById('math-solver-toggle');
+    
+    const memoriesList = document.getElementById('memories-list');
+    const addMemoryBtn = document.getElementById('add-memory-btn');
+    const newMemoryInput = document.getElementById('new-memory-input');
+
+    // Math Solver Toggle
+    if (mathSolverToggle) {
+        mathSolverToggle.addEventListener('change', (e) => {
+            const isEnabled = e.target.checked;
+            
+            fetch('/api/settings/math-solver', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isEnabled })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Fehler beim Speichern der Einstellung.');
+                    e.target.checked = !isEnabled; // Revert
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                e.target.checked = !isEnabled;
+            });
+        });
+    }
+
+    function loadSettings() {
+        // Load Math Solver status
+        fetch('/api/settings/math-solver')
+        .then(res => res.json())
+        .then(data => {
+            if (mathSolverToggle) {
+                mathSolverToggle.checked = data.enabled;
+            }
+        });
+    }
+
+    // Navigation inside Settings
+    function showSettingsHome() {
+        settingsHome.classList.remove('hidden');
+        memoriesSection.classList.add('hidden');
+        backToSettingsHomeBtn.classList.add('hidden');
+        if (window.innerWidth < 768) {
+            backToChatBtn.classList.remove('hidden');
+        }
+        settingsTitle.textContent = 'Einstellungen';
+    }
+
+    function showMemories() {
+        settingsHome.classList.add('hidden');
+        memoriesSection.classList.remove('hidden');
+        backToSettingsHomeBtn.classList.remove('hidden');
+        backToChatBtn.classList.add('hidden');
+        settingsTitle.textContent = 'Gedächtnis';
+        loadMemories();
+    }
+
+    if (openMemoriesBtn) {
+        openMemoriesBtn.addEventListener('click', showMemories);
+    }
+
+    if (backToSettingsHomeBtn) {
+        backToSettingsHomeBtn.addEventListener('click', showSettingsHome);
+    }
+
+    function loadMemories() {
+        if (!memoriesList) return;
+        
+        memoriesList.innerHTML = `
+            <div class="p-8 text-center text-gray-500">
+                <span class="material-symbols-outlined text-4xl mb-2 text-gray-300 animate-pulse">psychology</span>
+                <p>Lade Erinnerungen...</p>
+            </div>
+        `;
+
+        fetch('/api/memories')
+            .then(response => response.json())
+            .then(data => {
+                if (data.memories && data.memories.length > 0) {
+                    memoriesList.innerHTML = '';
+                    data.memories.forEach(memory => {
+                        const memoryItem = document.createElement('div');
+                        memoryItem.className = 'p-4 hover:bg-gray-50 transition-colors flex justify-between items-start group';
+                        memoryItem.innerHTML = `
+                            <div class="flex items-start space-x-3">
+                                <span class="material-symbols-outlined text-purple-400 mt-0.5 text-lg">lightbulb</span>
+                                <div>
+                                    <p class="text-gray-800 text-sm leading-relaxed">${memory.content}</p>
+                                    <p class="text-xs text-gray-400 mt-1">${new Date(memory.created_at).toLocaleDateString('de-DE')}</p>
+                                </div>
+                            </div>
+                            <button class="delete-memory-btn opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500 transition-all" data-id="${memory.id}" title="Löschen">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                        `;
+                        memoriesList.appendChild(memoryItem);
+                    });
+
+                    // Add event listeners for delete buttons
+                    document.querySelectorAll('.delete-memory-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const memoryId = e.currentTarget.dataset.id;
+                            showDeleteModal(memoryId, 'memory');
+                        });
+                    });
+
+                } else {
+                    memoriesList.innerHTML = `
+                        <div class="p-8 text-center text-gray-500">
+                            <span class="material-symbols-outlined text-4xl mb-2 text-gray-300">psychology_alt</span>
+                            <p>Noch keine Erinnerungen gespeichert.</p>
+                            <p class="text-xs mt-2">Die KI speichert wichtige Infos automatisch, während ihr schreibt.</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(err => {
+                console.error('Error loading memories:', err);
+                memoriesList.innerHTML = '<div class="p-4 text-center text-red-500">Fehler beim Laden.</div>';
+            });
+    }
+    
+    function addMemory() {
+        const content = newMemoryInput.value.trim();
+        if (!content) return;
+
+        addMemoryBtn.disabled = true;
+        
+        fetch('/api/memories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                newMemoryInput.value = '';
+                loadMemories();
+            } else {
+                alert(data.error || 'Fehler beim Speichern');
+            }
+        })
+        .catch(err => console.error(err))
+        .finally(() => {
+            addMemoryBtn.disabled = false;
+        });
+    }
+
+    if (addMemoryBtn) {
+        addMemoryBtn.addEventListener('click', addMemory);
+    }
+    
+    if (newMemoryInput) {
+        newMemoryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addMemory();
+        });
+    }
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                toggleSidebar(); // Close sidebar on mobile
+            }
+            chatView.classList.add('hidden');
+            settingsView.classList.remove('hidden');
+            showSettingsHome(); // Reset to home
+            loadSettings();
+        });
+    }
+
+    if (backToChatBtn) {
+        backToChatBtn.addEventListener('click', () => {
+            settingsView.classList.add('hidden');
+            chatView.classList.remove('hidden');
+        });
+    }
+
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsView.classList.add('hidden');
+            chatView.classList.remove('hidden');
+        });
+    }
+    
+    // Also allow returning to chat via the sidebar "Chats" tab
+    if (chatsTabBtn) {
+        const originalChatTabClick = chatsTabBtn.onclick; // Preserve existing logic if any (added via addEventListener above)
+        chatsTabBtn.addEventListener('click', () => {
+             settingsView.classList.add('hidden');
+             chatView.classList.remove('hidden');
+        });
+    }
+
 
     let activeSessionId = null;
     let activeAssignmentId = null;
@@ -782,13 +1002,66 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Delete Modal Logic
+    const deleteModal = document.getElementById('delete-modal');
+    const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    let itemToDeleteId = null;
+    let deleteActionType = null; // 'chat', 'assignment', 'homework', 'memory'
+
+    function showDeleteModal(id, type) {
+        itemToDeleteId = id;
+        deleteActionType = type;
+        if (deleteModal) deleteModal.classList.remove('hidden');
+    }
+
+    function hideDeleteModal() {
+        if (deleteModal) deleteModal.classList.add('hidden');
+        itemToDeleteId = null;
+        deleteActionType = null;
+    }
+
+    if (cancelDeleteBtn) {
+        cancelDeleteBtn.addEventListener('click', hideDeleteModal);
+    }
+
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', () => {
+            if (!itemToDeleteId || !deleteActionType) return;
+
+            if (deleteActionType === 'chat') {
+                fetch(`/delete-chat/${itemToDeleteId}`, { method: 'POST' })
+                .then(() => location.reload());
+            } else if (deleteActionType === 'assignment') {
+                fetch(`/delete-assignment/${itemToDeleteId}`, { method: 'POST' })
+                .then(() => location.reload());
+            } else if (deleteActionType === 'homework') {
+                fetch(`/delete-homework/${itemToDeleteId}`, { method: 'POST' })
+                .then(() => location.reload());
+            } else if (deleteActionType === 'memory') {
+                 fetch(`/api/memories/${itemToDeleteId}`, { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.success) loadMemories();
+                        hideDeleteModal();
+                    });
+                 return; // Don't hide here, let the fetch callback do it or logic above
+            }
+            // For page reloads, we don't need to hide explicitly as the page refreshes
+        });
+    }
+
+    // Close modal on outside click
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) hideDeleteModal();
+        });
+    }
+
     if (deleteChatOption) {
         deleteChatOption.addEventListener('click', () => {
             if (activeSessionId) {
-                if (confirm('Möchten Sie diesen Chat wirklich löschen?')) {
-                    fetch(`/delete-chat/${activeSessionId}`, { method: 'POST' })
-                    .then(() => location.reload());
-                }
+                showDeleteModal(activeSessionId, 'chat');
             }
         });
     }
@@ -796,10 +1069,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (deleteAssignmentOption) {
         deleteAssignmentOption.addEventListener('click', () => {
             if (activeAssignmentId) {
-                if (confirm('Möchten Sie diese Aufgabe wirklich löschen?')) {
-                    fetch(`/delete-assignment/${activeAssignmentId}`, { method: 'POST' })
-                    .then(() => location.reload());
-                }
+                 if (confirm('Möchten Sie diese Aufgabe wirklich löschen?')) { // Keep simple confirm for now or upgrade too
+                     fetch(`/delete-assignment/${activeAssignmentId}`, { method: 'POST' })
+                     .then(() => location.reload());
+                 }
             }
         });
     }
@@ -808,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', function() {
         deleteHomeworkOption.addEventListener('click', () => {
             if (activeHomeworkId) {
                 if (confirm('Möchten Sie diese Hausaufgabe wirklich löschen?')) {
-                    fetch(`/delete-homework/${activeHomeworkId}`, { method: 'POST' })
+                     fetch(`/delete-homework/${activeHomeworkId}`, { method: 'POST' })
                     .then(() => location.reload());
                 }
             }
