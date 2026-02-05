@@ -18,9 +18,16 @@ def init_database():
             user_type TEXT NOT NULL CHECK (user_type IN ('teacher', 'student', 'it-admin')),
             class_name TEXT,
             school TEXT,
+            math_solver BOOLEAN DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Add math_solver column to users table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN math_solver BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
 
     # Create assignments table
     cursor.execute('''
@@ -130,8 +137,77 @@ def init_database():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_assignments_class_school ON assignments(class_name, school)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id)')
 
+    # Create memories table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+def add_memory(user_id, content):
+    """Add a new memory for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        # Check if similar memory exists to avoid duplicates (simple check)
+        cursor.execute('SELECT id FROM memories WHERE user_id = ? AND content = ?', (user_id, content))
+        if cursor.fetchone():
+            return False
+            
+        cursor.execute('INSERT INTO memories (user_id, content) VALUES (?, ?)', (user_id, content))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_memories(user_id):
+    """Get all memories for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, content, created_at FROM memories WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
+    memories = cursor.fetchall()
+    conn.close()
+    return [{'id': m[0], 'content': m[1], 'created_at': m[2]} for m in memories]
+
+def delete_memory(memory_id, user_id):
+    """Delete a specific memory"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM memories WHERE id = ? AND user_id = ?', (memory_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_memory_by_content(user_id, content):
+    """Delete a memory by its content (for AI management)"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM memories WHERE user_id = ? AND content = ?', (user_id, content))
+        if cursor.rowcount > 0:
+            conn.commit()
+            return True
+        return False
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
 
 def create_user(username, password, user_type, school=None):
     """Create a new user"""
@@ -694,3 +770,26 @@ def delete_subject(subject_id, user_id):
         return False
     finally:
         conn.close()
+
+def set_math_solver_status(user_id, status):
+    """Set the math solver status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE users SET math_solver = ? WHERE id = ?', (status, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_math_solver_status(user_id):
+    """Get the math solver status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT math_solver FROM users WHERE id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return bool(result[0]) if result else False

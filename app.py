@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status
 
 load_dotenv()
 
@@ -51,6 +51,10 @@ init_database()
 # Ensure sheets directory exists
 if not os.path.exists('sheets'):
     os.makedirs('sheets')
+
+# Ensure uploads directory exists
+if not os.path.exists('uploads'):
+    os.makedirs('uploads')
 
 BASE_URL = os.getenv("BASE_URL")
 MODEL = os.getenv("MODEL")
@@ -198,6 +202,9 @@ def new_chat():
         except OSError as e:
             print(f"Error deleting cached image: {e}")
 
+    # Insert welcome message to persist session
+    save_chat_message(session['user_id'], new_session_id, 'assistant', 'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!')
+
     return jsonify({'session_id': new_session_id})
 
 @app.route('/ask')
@@ -230,6 +237,9 @@ def ask():
                 'mime_type': mime_type,
                 'filename': cached_image_filename
             }
+            # Clear from session so it's only used once
+            session.pop('cached_image_filename', None)
+            print(f"DEBUG: Cached image loaded and cleared from session: {cached_image_filename}")
         except Exception as e:
             print(f"Error reading cached image: {e}")
 
@@ -252,30 +262,85 @@ def ask():
             # Get current homework and subjects for context (limit to recent 15)
             current_homework = get_homework_for_user(user_id)[:15]
             current_subjects = get_subjects(user_id)
+            
+            # Get user memories
+            user_memories = get_memories(user_id)
+            memories_text = "\n".join([f"- {m['content']}" for m in user_memories])
+
+            # Get math solver status
+            math_solver_enabled = get_math_solver_status(user_id)
 
             # Build conversation context from database
             conversation_context = system_prompt if system_prompt else ""
+            
+            if math_solver_enabled:
+                 conversation_context += "\n\nZUSATZREGEL: Du darfst Matheaufgaben vollständig lösen und den Rechenweg zeigen. Die Regel 'keine Lösungen sagen' ist für diesen Benutzer AUFGEHOBEN."
+            else:
+                 conversation_context += "\n\nZUSATZREGEL: Bei Matheaufgaben darfst du KEINE Lösungen direkt verraten. Gib nur Tipps und Hilfestellungen zum Lösungsweg."
+
             conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
+            if memories_text:
+                conversation_context += f"\n\nDAS WEIßT DU ÜBER DEN BENUTZER (Erinnerungen):\n{memories_text}"
+            
             conversation_context += f"\n\nDeine aktuelle Hausaufgaben-Liste: {json.dumps(current_homework)}"
             conversation_context += f"\nDeine verfügbaren Fächer: {json.dumps(current_subjects)}"
-            conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben erstellen, bearbeiten oder löschen."
+            conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben eintragen, bearbeiten oder löschen."
             conversation_context += "\nWenn du eine Aktion durchführst, schreibe ZUERST deine Antwort an den Benutzer und füge AM ENDE deiner Nachricht die Aktion im JSON-Format zwischen <action> und </action> Tags ein."
-            conversation_context += "\nBeispiel: Ich habe Mathe hinzugefügt. <action>{\"type\": \"homework_action\", \"action\": \"create\", \"title\": \"Mathe S.12\", \"due_date\": \"YYYY-MM-DD\", \"subject_name\": \"Mathe\"}</action>"
+            conversation_context += "\nBeispiel: Ich habe Mathe eingetragen. <action>{\"type\": \"homework_action\", \"action\": \"create\", \"title\": \"Mathe S.12\", \"due_date\": \"YYYY-MM-DD\", \"subject_name\": \"Mathe\"}</action>"
+            conversation_context += "\n\nSPEICHERUNG VON FAKTEN: Sei extrem aufmerksam auf kleine Details! Wenn der Benutzer dir persönliche Informationen gibt oder diese aus hochgeladenen Dokumenten/Bildern hervorgehen (z.B. Name auf einem Arbeitsblatt, spezifische Lernschwächen, Themen die er gut/schlecht kann), speichere diese SOFORT als Erinnerung."
+            conversation_context += "\nNutze dafür: <action>{\"type\": \"memory_action\", \"action\": \"add\", \"content\": \"Der Benutzer heißt Max (aus Arbeitsblatt erkannt).\"}</action>"
+            conversation_context += "\nOder: <action>{\"type\": \"memory_action\", \"action\": \"add\", \"content\": \"Benutzer tut sich schwer mit Bruchrechnung.\"}</action>"
+            conversation_context += "\nINFO: Wenn du eine Erinnerung speicherst, erwähne beiläufig, dass der Benutzer diese jederzeit in den Einstellungen (Zahnrad-Symbol) verwalten oder löschen kann."
+            conversation_context += "\n\nKONFLIKTE LÖSEN: Wenn eine neue Information einer alten widerspricht (z.B. Benutzer heißt jetzt Peter statt Bo), LÖSCHE die alte Erinnerung!"
+            conversation_context += "\nZum Löschen nutze: <action>{\"type\": \"memory_action\", \"action\": \"delete\", \"content\": \"EXAKTER INHALT DERALTEN ERINNERUNG\"}</action>"
             conversation_context += "\n\nWICHTIG: Nutze für 'due_date' IMMER das Format YYYY-MM-DD. Wenn der Benutzer 'morgen' sagt, berechne das Datum basierend auf HEUTE."
             conversation_context += "\n\nWICHTIG: Benutze NIEMALS JSON-Code außerhalb von <action> Tags. Erstelle neue Fächer automatisch, indem du den 'subject_name' angibst."
-            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"MARKDOWN_INHALT\"}</action>."
+            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"# Titel\\n\\n## Aufgabe 1\\nFrage...\"}</action>."
+            conversation_context += "\nACHTUNG: Der Inhalt muss valides Markdown sein. Nutze '\\n' für Zeilenumbrüche. Mache IMMER ein Leerzeichen nach '#' (z.B. '# Titel', nicht '#Titel')."
+            conversation_context += "\nVERBOTEN: Beginne den Inhalt NIEMALS mit 'createmd:'. Schreibe direkt das Markdown."
+            conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies kurz und bitte um einen Moment Geduld. Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit, da es nur wenige Sekunden dauert."
+            conversation_context += "\n\nDRINGEND: Achte penibel auf korrekte Leerzeichen! Setze NACH jedem Satzzeichen (.,!?) ein Leerzeichen, BEVOR du weiterschreibst oder einen <action> Tag öffnest."
 
             # Prepare messages with chat history
             messages = [
                 {"role": "system", "content": conversation_context}
             ]
 
-            # Add previous messages from database
+            # Reconstruct history strictly alternating
+            processed_history = []
             for msg in chat_history:
-                if msg['message_type'] == 'user':
-                    messages.append({"role": "user", "content": msg['content']})
-                elif msg['message_type'] == 'assistant':
-                    messages.append({"role": "assistant", "content": msg['content']})
+                role = msg['message_type']
+                if role not in ['user', 'assistant']:
+                    continue
+                
+                content = msg['content']
+                img = msg.get('image_data')
+                
+                if role == 'user' and img:
+                    msg_obj = {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": content},
+                            {"type": "image_url", "image_url": {"url": img}}
+                        ]
+                    }
+                else:
+                    msg_obj = {"role": role, "content": content}
+
+                if not processed_history:
+                    # The first message after system should ideally be 'user'
+                    # If history starts with 'assistant' (e.g. the welcome message), we skip it for the AI context
+                    if role == 'user':
+                        processed_history.append(msg_obj)
+                else:
+                    # Ensure alternating roles
+                    if role != processed_history[-1]['role']:
+                        processed_history.append(msg_obj)
+                    else:
+                        # Same role twice: merge content
+                        processed_history[-1]['content'] = str(processed_history[-1]['content']) + "\n" + content
+            
+            messages.extend(processed_history)
 
             # Save user question to database
             image_data = None
@@ -284,6 +349,11 @@ def ask():
 
             save_chat_message(user_id, chat_session_id, 'user', question, image_data)
 
+            # Check if we need to append current question (must follow an assistant message or be the first)
+            # If the history ended with 'user', we add a dummy assistant response to allow the new user question
+            if messages and messages[-1]['role'] == 'user':
+                messages.append({"role": "assistant", "content": "..."})
+            
             # If there's a cached image, include it in the user message
             if cached_image:
                 user_content = [
@@ -298,6 +368,13 @@ def ask():
                 messages.append({"role": "user", "content": user_content})
             else:
                 messages.append({"role": "user", "content": question})
+
+            # Final check: Ensure the first message after system is 'user'
+            # If all history was skipped/empty, the current question will be the first and it's 'user'. Correct.
+            if len(messages) > 1 and messages[1]['role'] == 'assistant':
+                # This could happen if history was [assistant] and we added a dummy assistant
+                # We remove the first assistant message to start with user
+                messages.pop(1)
 
             response_stream = client.chat.completions.create(
                 model=MODEL,
@@ -314,8 +391,9 @@ def ask():
 
             # Inside generate() loop, after full_answer is collected:
             homework_results = []
+            memory_results = []
             md_content = None
-            
+
             # Find all <action> blocks
             action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL)
             
@@ -367,69 +445,105 @@ def ask():
                                 homework_results.append("alle Hausaufgaben gelöscht")
                         elif res.get('type') == 'worksheet_creation':
                              md_content = res.get('content')
+                        elif res.get('type') == 'memory_action':
+                            content = res.get('content')
+                            action_type = res.get('action', 'add') # Default to add for backward compatibility
+                            
+                            if content:
+                                if action_type == 'add':
+                                    if add_memory(user_id, content):
+                                        memory_results.append("Erinnerung gespeichert")
+                                    else:
+                                        memory_results.append("Erinnerung existiert bereits")
+                                elif action_type == 'delete':
+                                    if delete_memory_by_content(user_id, content):
+                                        memory_results.append("Erinnerung aktualisiert")
                 except Exception:
                     continue
 
-            # Clean up message for storage (remove all JSON and tags)
-            display_text = re.sub(r'<action>[\s\S]*?</?action>', '', full_answer, flags=re.IGNORECASE)
-            display_text = re.sub(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', '', display_text)
-            # Remove any stray action tags that might be left
-            display_text = re.sub(r'</?action/?>', '', display_text, flags=re.IGNORECASE)
-            display_text = display_text.strip()
-            
-            # If AI was silent but did things, tell the user
-            if not display_text and homework_results:
-                display_text = "Erledigt: " + ", ".join(homework_results)
-            
-            if display_text:
-                save_chat_message(user_id, chat_session_id, 'assistant', display_text)
-            
-            if homework_results:
-                yield "data: HOMEWORK_UPDATED\n\n"
-            
+            pdf_basename = None
             if md_content:
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename = f"sheets/{worksheet_uuid}.md"
                 pdf_filename = f"sheets/{worksheet_uuid}.pdf"
-                download_answer = "Sie können ihr Arbeitsblatt nun downloaden."
 
-                print(md_content.strip())
                 with open(md_filename, "w", encoding='utf-8') as f:
                     f.write(md_content.strip())
                 
                 # Convert MD to PDF using the external service
                 try:
-                    # Use requests instead of curl for better reliability
                     response = requests.post(
-                        'https://md-to-pdf.fly.dev',
+                        'https://api.md-to-pdf.l-ai.pro',
                         data={'markdown': md_content.strip()},
                         timeout=30
                     )
                     response.raise_for_status()
-                    
                     with open(pdf_filename, 'wb') as f:
                         f.write(response.content)
-                        
-                    print(f"PDF generated successfully: {pdf_filename}")
-                    
-                except requests.exceptions.RequestException as e:
+                    pdf_basename = os.path.basename(pdf_filename)
+                except Exception as e:
                     print(f"PDF generation failed: {e}")
-                    yield "data: Fehler beim Erstellen des Arbeitsblatts (PDF-Service nicht erreichbar). Bitte versuchen Sie es später erneut.\n\n"
-                    return
+                    yield "data: Fehler beim Erstellen des Arbeitsblatts.\n\n"
 
-                # Save assistant answer and worksheet filename to database
-                pdf_basename = os.path.basename(pdf_filename)
-                save_chat_message(user_id, chat_session_id, 'assistant', download_answer, worksheet_filename=pdf_basename)
-                yield f"data: {download_answer}\n\n"
-                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n" # Special tag for frontend
+            # Clean up message for storage (remove all JSON and tags)
+            # We replace with a space first to prevent sentences sticking together, then clean double spaces
+            display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
+            display_text = re.sub(r'(\{.*?\}|\[.*?\])', ' ', display_text)
+            display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\s+', ' ', display_text).strip()
+            
+            if not display_text:
+                if homework_results:
+                    display_text = "Erledigt: " + ", ".join(homework_results)
+                elif memory_results:
+                    display_text = "Ich habe mir das gemerkt."
+            
+            if display_text:
+                save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=pdf_basename)
+            
+            if homework_results:
+                yield "data: HOMEWORK_UPDATED\n\n"
+            
+            if pdf_basename:
+                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
+            
+            # Auto-naming: Only if this is the start of the conversation (e.g., <= 2 messages in history including the one just added)
+            # We count messages in chat_history. user msg + current assistant msg = 2 new ones. 
+            # If total history is small, we generate a title.
+            if len(chat_history) <= 1: # History before this turn was 0 or 1 message
+                try:
+                    title_prompt = "Fasse das Thema dieser Konversation in 1-4 Schlagworten zusammen. Antworte NUR mit den Schlagworten. KEINE ganzen Sätze. KEIN Satzzeichen am Ende."
+                    # We must append the assistant's answer to the history before asking for title, 
+                    # otherwise we have user-user sequence (question + title_prompt)
+                    title_messages = messages + [
+                        {"role": "assistant", "content": display_text if display_text else " "},
+                        {"role": "user", "content": title_prompt}
+                    ]
+                    
+                    # Short context call for title
+                    title_response = client.chat.completions.create(
+                        model=MODEL,
+                        messages=title_messages,
+                        max_tokens=15
+                    )
+                    new_title = title_response.choices[0].message.content.strip().strip('"').strip('.')
+                    if new_title:
+                        rename_chat_session(user_id, chat_session_id, new_title)
+                        yield f"data: SESSION_TITLE:{new_title}\n\n"
+                except Exception as e:
+                    print(f"Auto-naming failed: {e}")
 
         except requests.exceptions.RequestException as e:
             print(f"Error communicating with API: {e}")
-            yield "data: Entschuldigung, es gab ein Problem mit der Verbindung. Bitte stellen Sie sicher, dass der Dienst erreichbar ist.\n\n"
+            error_message = "Entschuldigung, es gab ein Problem mit der Verbindung. Bitte stellen Sie sicher, dass der Dienst erreichbar ist."
+            save_chat_message(user_id, chat_session_id, 'assistant', error_message)
+            yield f"data: {error_message}\n\n"
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
-            yield "data: Ein unerwarteter Fehler ist aufgetreten.\n\n"
+            error_message = f"Ein unerwarteter Fehler ist aufgetreten: {str(e)}"
+            save_chat_message(user_id, chat_session_id, 'assistant', error_message)
+            yield f"data: {error_message}\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
 
@@ -481,9 +595,6 @@ def index():
 
     if user_type == 'it-admin':
         return redirect(url_for('admin_dashboard'))
-
-    if user_type == 'teacher' and not session.get('class_name'):
-        return render_template('message.html', title='Warte auf Zuweisung', message='Ihr Konto wurde noch keiner Klasse zugewiesen. Bitte wenden Sie sich an Ihren IT-Administrator.')
 
     # Create new chat session if not exists
     if 'chat_session_id' not in session:
@@ -554,6 +665,77 @@ def add_student_route():
         add_student_to_class(student_username, class_name)
 
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/create-assignment', methods=['GET', 'POST'])
+def create_assignment_route():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    if session.get('user_type') != 'teacher':
+        return redirect(url_for('index'))
+
+    if not session.get('class_name'):
+        return render_template('message.html', title='Fehler', message='Sie sind keiner Klasse zugewiesen.')
+
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        
+        if not title or not description:
+            return render_template('create_assignment.html', error='Titel und Beschreibung sind erforderlich.')
+
+        user_id = session['user_id']
+        class_name = session['class_name']
+        school = session['school']
+
+        create_assignment(title, description, user_id, class_name, school)
+        return redirect(url_for('index'))
+
+    return render_template('create_assignment.html')
+
+@app.route('/view-assignment/<assignment_id>', methods=['GET', 'POST'])
+def view_assignment(assignment_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    user_type = session['user_type']
+    assignment = get_assignment(assignment_id)
+
+    if not assignment:
+        return redirect(url_for('index'))
+
+    # Check permissions (optional but good practice: ensure user belongs to same school/class)
+    # For now relying on list filtering in index logic, but strict check could be added here.
+
+    submission = None
+    submissions = []
+
+    if user_type == 'student':
+        if request.method == 'POST':
+            content = request.form.get('submission_content')
+            if content:
+                create_submission(assignment_id, user_id, content)
+                return redirect(url_for('view_assignment', assignment_id=assignment_id))
+        
+        submission = get_submission_for_user(assignment_id, user_id)
+    
+    elif user_type == 'teacher':
+        submissions = get_submissions_for_assignment(assignment_id)
+
+    return render_template('view_assignment.html', 
+                         assignment=assignment, 
+                         user_type=user_type,
+                         submission=submission,
+                         submissions=submissions)
+
+@app.route('/delete-assignment/<assignment_id>', methods=['POST'])
+def delete_assignment_route(assignment_id):
+    if 'user_id' not in session or session.get('user_type') != 'teacher':
+        return jsonify({'error': 'Nicht autorisiert'}), 401
+    
+    delete_assignment(assignment_id)
+    return jsonify({'success': True})
 
 @app.route('/create-homework', methods=['GET', 'POST'])
 def create_homework_route():
@@ -705,3 +887,58 @@ def clear_cache():
         except OSError as e:
             print(f"Error deleting cached image: {e}")
     return jsonify({'message': 'Zwischenspeicher wurde geleert.'})
+
+@app.route('/api/memories', methods=['GET'])
+def get_user_memories_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    memories = get_memories(session['user_id'])
+    return jsonify({'memories': memories})
+
+@app.route('/api/memories', methods=['POST'])
+def add_user_memory_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    data = request.get_json()
+    content = data.get('content')
+    
+    if not content:
+        return jsonify({'error': 'Inhalt ist erforderlich'}), 400
+        
+    if add_memory(session['user_id'], content):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Fehler beim Speichern oder Duplikat'}), 500
+
+@app.route('/api/memories/<int:memory_id>', methods=['DELETE'])
+def delete_user_memory_route(memory_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    if delete_memory(memory_id, session['user_id']):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Fehler beim Löschen'}), 500
+
+@app.route('/api/settings/math-solver', methods=['GET'])
+def get_math_solver_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    status = get_math_solver_status(session['user_id'])
+    return jsonify({'enabled': status})
+
+@app.route('/api/settings/math-solver', methods=['POST'])
+def set_math_solver_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    data = request.get_json()
+    enabled = data.get('enabled', False)
+    
+    if set_math_solver_status(session['user_id'], enabled):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Fehler beim Speichern'}), 500

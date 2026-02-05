@@ -127,22 +127,6 @@
 
             <!-- Right: Actions -->
             <div class="flex items-center space-x-2">
-
-
-                <!-- User Badge -->
-                <div class="flex items-center space-x-2 sm:bg-gray-100 sm:rounded-full sm:px-3 sm:py-1">
-                    <div class="w-8 h-8 sm:w-6 sm:h-6 rounded-full bg-gradient-to-r from-blue-500 to-green-500 flex items-center justify-center">
-                        <span class="material-symbols-outlined text-white text-sm">
-                            {% if user_type == 'teacher' %}person_2{% else %}person_raised_hand{% endif %}
-                        </span>
-                    </div>
-                    <span class="text-sm font-medium text-gray-700 hidden sm:block">{{ user_type.title() }}: {{ username }}</span>
-                </div>
-
-
-
-
-
                 <!-- Logout Button -->
                 <a href="/logout" class="flex items-center justify-center w-10 h-10 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
                     <span class="material-symbols-outlined text-lg">logout</span>
@@ -244,64 +228,202 @@
                         {% endfor %}
                     </div>
                 </div>
+
+                <!-- User Profile / Bottom Section -->
+                <div class="mt-auto p-4 border-t border-gray-200 bg-gray-50">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">
+                            {{ username[0].upper() }}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">
+                                {{ username }}
+                            </p>
+                            <p class="text-xs text-gray-500 truncate">
+                                {{ user_type|title }}
+                            </p>
+                        </div>
+                        <a href="{{ url_for('logout') }}" class="text-gray-400 hover:text-red-500 transition-colors" title="Abmelden">
+                            <span class="material-symbols-outlined">logout</span>
+                        </a>
+                    </div>
+                    
+                    <!-- Settings Button -->
+                    <button id="settings-btn" class="w-full flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="material-symbols-outlined">settings</span>
+                        <span class="text-sm font-medium">Einstellungen</span>
+                    </button>
+                </div>
             </aside>
 
             <!-- Main Chat Container -->
             <main id="main-content" class="flex-1 flex flex-col bg-white md:bg-transparent transition-all duration-300 ease-in-out">
                 <!-- Chat Messages -->
-                <div class="flex-1 overflow-hidden">
-                    <div id="chat-history" class="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
-                        <!-- Welcome Message -->
-                        <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message">
-                            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                <span class="material-symbols-outlined text-white text-lg">adb</span>
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex items-center space-x-2 mb-1">
-                                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
-                                    <span class="text-xs text-gray-500">Jetzt</span>
+                <div id="chat-view" class="flex-1 flex flex-col h-full overflow-hidden">
+                    <div class="flex-1 overflow-hidden">
+                        <div id="chat-history" class="h-full overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
+                            <!-- Welcome Message -->
+                            <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message">
+                                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <span class="material-symbols-outlined text-white text-lg">adb</span>
                                 </div>
-                                <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
+                                        <span class="text-xs text-gray-500">Jetzt</span>
+                                    </div>
+                                    <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Container -->
+                    <div class="p-4 md:p-6 bg-white border-t border-gray-200 md:border-t-0">
+                        <div class="relative">
+                            <textarea id="chat-input" class="w-full pl-4 pr-16 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" placeholder="Schreibe eine Nachricht..." rows="1"></textarea>
+                            <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                                <button id="image-upload-button" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-200 transition-colors duration-300">
+                                    <span class="material-symbols-outlined text-gray-600">image</span>
+                                </button>
+                                <button id="record-button" class="flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                    <span class="material-symbols-outlined">mic</span>
+                                </button>
+                                <button id="send-button" class="hidden flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                    <span class="material-symbols-outlined">send</span>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="image-input" accept="image/*" class="hidden">
+                        <!-- Image Preview -->
+                        <div id="image-preview" class="hidden mt-2">
+                            <div class="relative w-24 h-24 border border-gray-300 rounded-lg overflow-hidden">
+                                <img id="preview-image" src="" alt="Vorschau" class="w-full h-full object-cover">
+                                <button id="remove-image" class="absolute top-1 right-1 flex items-center justify-center w-6 h-6 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors duration-300">
+                                    <span class="material-symbols-outlined text-sm">delete</span>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Cached Image Indicator -->
+                        <div id="cached-image-indicator" class="hidden mt-4 flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                            <span class="material-symbols-outlined text-blue-600">image</span>
+                            <span class="text-sm text-blue-700 font-medium">Bild im Zwischenspeicher verfügbar</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Input Container -->
-                <div class="p-4 md:p-6 bg-white border-t border-gray-200 md:border-t-0">
-                    <div class="relative">
-                        <textarea id="chat-input" class="w-full pl-4 pr-16 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" placeholder="Schreibe eine Nachricht..." rows="1"></textarea>
-                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-                            <button id="image-upload-button" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-200 transition-colors duration-300">
-                                <span class="material-symbols-outlined text-gray-600">image</span>
+                <!-- Settings View (Hidden by default) -->
+                <div id="settings-view" class="hidden h-full overflow-y-auto bg-gray-50 p-6 md:p-12 absolute top-0 left-0 right-0 bottom-0 z-50">
+                    <div class="max-w-4xl mx-auto relative">
+                        <!-- Close Button -->
+                        <button id="close-settings-btn" class="absolute top-0 right-0 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200 transition-colors">
+                            <span class="material-symbols-outlined text-2xl">close</span>
+                        </button>
+
+                        <div class="flex items-center mb-8">
+                            <button id="back-to-settings-home-btn" class="hidden mr-4 text-gray-600 hover:text-purple-600">
+                                <span class="material-symbols-outlined">arrow_back</span>
                             </button>
-                            <button id="record-button" class="flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
-                                <span class="material-symbols-outlined">mic</span>
+                            <button id="back-to-chat-btn" class="mr-4 md:hidden text-gray-600 hover:text-purple-600">
+                                <span class="material-symbols-outlined">arrow_back</span>
                             </button>
-                            <button id="send-button" class="hidden flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
-                                <span class="material-symbols-outlined">send</span>
-                            </button>
+                            <h2 id="settings-title" class="text-3xl font-bold text-gray-800">Einstellungen</h2>
                         </div>
-                    </div>
-                    <input type="file" id="image-input" accept="image/*" class="hidden">
-                    <!-- Image Preview -->
-                    <div id="image-preview" class="hidden mt-2">
-                        <div class="relative w-24 h-24 border border-gray-300 rounded-lg overflow-hidden">
-                            <img id="preview-image" src="" alt="Vorschau" class="w-full h-full object-cover">
-                            <button id="remove-image" class="absolute top-1 right-1 flex items-center justify-center w-6 h-6 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors duration-300">
-                                <span class="material-symbols-outlined text-sm">delete</span>
+
+                        <!-- Settings Main Menu -->
+                        <div id="settings-home" class="space-y-4">
+                            <!-- Link to Memories -->
+                            <button id="open-memories-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-purple-200 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">memory</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Gedächtnis & Erinnerungen</h3>
+                                        <p class="text-sm text-gray-500">Verwalte, was die KI über dich weiß.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
                             </button>
+
+                            <!-- Math Solver Toggle -->
+                            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                        <span class="material-symbols-outlined text-2xl">calculate</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Mathe-Löser aktivieren</h3>
+                                        <p class="text-sm text-gray-500">Erlaubt der KI, Matheaufgaben vollständig zu lösen.</p>
+                                    </div>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="math-solver-toggle" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
                         </div>
-                    </div>
-                    <!-- Cached Image Indicator -->
-                    <div id="cached-image-indicator" class="hidden mt-4 flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                        <span class="material-symbols-outlined text-blue-600">image</span>
-                        <span class="text-sm text-blue-700 font-medium">Bild im Zwischenspeicher verfügbar</span>
+
+                        <!-- Memories Section (Hidden by default) -->
+                        <div id="memories-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+                            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
+                                <div>
+                                    <h3 class="text-xl font-semibold text-gray-800 flex items-center">
+                                        <span class="material-symbols-outlined mr-2 text-purple-600">memory</span>
+                                        Gespeicherte Erinnerungen
+                                    </h3>
+                                    <p class="text-sm text-gray-500 mt-1">
+                                        Hier siehst du, was die KI über dich gelernt hat. Du kannst einzelne Einträge löschen.
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <!-- Add Memory Form -->
+                            <div class="p-6 bg-gray-50 border-b border-gray-100">
+                                <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2">
+                                    <input type="text" id="new-memory-input" class="w-full flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none" placeholder="Neue Erinnerung hinzufügen">
+                                    <button id="add-memory-btn" class="w-full md:w-auto bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <span class="material-symbols-outlined mr-1">add</span> Hinzufügen
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="memories-list" class="divide-y divide-gray-100">
+                                <!-- Memories will be loaded here -->
+                                <div class="p-8 text-center text-gray-500">
+                                    <span class="material-symbols-outlined text-4xl mb-2 text-gray-300">psychology</span>
+                                    <p>Lade Erinnerungen...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
 
 
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full transform transition-all scale-100 p-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <span class="material-symbols-outlined text-red-600">delete</span>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Chat löschen?</h3>
+                <p class="text-sm text-gray-500 mb-6">
+                    Bist du sicher, dass du diesen Chat löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.
+                </p>
+            </div>
+            <div class="flex space-x-3">
+                <button id="cancel-delete-btn" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium">
+                    Abbrechen
+                </button>
+                <button id="confirm-delete-btn" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
+                    Löschen
+                </button>
+            </div>
         </div>
     </div>
 
