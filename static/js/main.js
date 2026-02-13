@@ -13,6 +13,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const newChatBtn = document.getElementById('new-chat-btn');
     const chatInput = document.getElementById('chat-input');
 
+    function animateTitleUpdate(element, newTitle) {
+        element.textContent = newTitle;
+        element.classList.remove('animate-title');
+        void element.offsetWidth; // Trigger reflow
+        element.classList.add('animate-title');
+        setTimeout(() => element.classList.remove('animate-title'), 1000);
+    }
+
+    function showWorksheetLoading(container, indicatorRef) {
+        if (indicatorRef.val) return;
+        indicatorRef.val = document.createElement('div');
+        indicatorRef.val.className = 'mt-3 p-3 border border-purple-100 rounded-xl bg-purple-50/50 flex items-center space-x-3 text-purple-600';
+        indicatorRef.val.innerHTML = `
+            <span class="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+            <span class="text-sm font-medium">Arbeitsblatt wird erstellt...</span>
+        `;
+        container.appendChild(indicatorRef.val);
+        scrollToBottom();
+    }
+
 
     // --- Unified Navigation Logic ---
     const sidebar = document.getElementById('sidebar');
@@ -196,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const eventSource = new EventSource(`/ask?question=${encodeURIComponent(text)}`);
         let fullAnswer = '';
         let botMessageAppended = false;
+        let worksheetLoadingIndicator = { val: null };
 
         eventSource.onmessage = function(event) {
             if (!botMessageAppended) {
@@ -207,41 +228,55 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             const content = event.data;
-            console.log(content);
-            if (content.startsWith("WORKSHEET_DOWNLOAD_LINK:")) {
-                let worksheet_filename = content.substring("WORKSHEET_DOWNLOAD_LINK:".length);
+            const trimmedContent = content.trim();
+            
+            if (trimmedContent.startsWith("WORKSHEET_DOWNLOAD_LINK:")) {
+                let worksheet_filename = trimmedContent.substring("WORKSHEET_DOWNLOAD_LINK:".length);
                 // Clean filename just in case
                 worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
                 
+                // Remove loading indicator if it exists
+                if (worksheetLoadingIndicator.val && worksheetLoadingIndicator.val.parentNode) {
+                    worksheetLoadingIndicator.val.parentNode.removeChild(worksheetLoadingIndicator.val);
+                    worksheetLoadingIndicator.val = null;
+                }
+
                 const downloadButton = document.createElement('a');
                 downloadButton.href = `/download-worksheet/${worksheet_filename}`;
                 downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
                 downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
                 botMessageElement.querySelector('.flex-1').appendChild(downloadButton);
-            } else if (content.startsWith("SESSION_TITLE:")) {
-                const newTitle = content.substring("SESSION_TITLE:".length);
-                // Update title in sidebar if current session matches
-                // We can't easily get the current session ID here globally without checking active class
-                // But we can reload the page or try to find the active session element
+            } else if (trimmedContent.startsWith("SESSION_TITLE:")) {
+                const newTitle = trimmedContent.substring("SESSION_TITLE:".length);
                 const activeSession = document.querySelector('.chat-session.bg-purple-100');
                 if (activeSession) {
                     const titleEl = activeSession.querySelector('.session-title');
-                    if (titleEl) titleEl.textContent = newTitle;
+                    if (titleEl) animateTitleUpdate(titleEl, newTitle);
                 }
-            } else if (content === "HOMEWORK_UPDATED") {
+            } else if (trimmedContent === "START_WORKSHEET_GENERATION") {
+                console.log("Worksheet generation started...");
+                showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
+            } else if (trimmedContent === "HOMEWORK_UPDATED") {
                 // Reload or update specific UI part
                 setTimeout(() => location.reload(), 1500);
-            } else if (content.toLowerCase().startsWith("createmd:")) {
+            } else if (trimmedContent.toLowerCase().startsWith("createmd:")) {
                 // Do nothing, hide this from the user
+                showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
             } else {
                 fullAnswer += content;
-                
+
+                // Also check if the raw stream contains worksheet markers to show animation immediately
+                if ((fullAnswer.includes('worksheet_creation') || fullAnswer.toLowerCase().includes('createmd:')) && !worksheetLoadingIndicator.val) {
+                    showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
+                }
+
                 // Remove finished action tags and replace with a single space
                 let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, ' ');
                 
-                // If we are currently inside an action tag, hide the partial tag 
-                // but keep a space to prevent text clumping
-                displayHTML = displayHTML.replace(/<action[\s\S]*$/gi, ' '); 
+                // If we are currently inside an action tag or have a partial tag, hide it
+                // This covers <, <a, <ac, <action...
+                displayHTML = displayHTML.replace(/\s*<[a-zA-Z\/]*$/gi, ' '); 
+                displayHTML = displayHTML.replace(/\s*<action[\s\S]*$/gi, ' '); 
                 
                 // Also remove raw JSON objects/arrays and replace with space
                 displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, ' ');
@@ -254,6 +289,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 displayHTML = displayHTML.replace(/<\/action\/?>/gi, ' ');
                 displayHTML = displayHTML.replace(/action>/gi, ' ');
                 
+                // Filter out redundant "please wait" phrases from real-time display
+                displayHTML = displayHTML.replace(/Bitte hab einen Moment Geduld, während ich es generiere\./gi, '');
+                displayHTML = displayHTML.replace(/Bitte gib mir einen Moment, damit es vollständig generiert wird\./gi, '');
+
                 // Collapse multiple spaces into one, but don't trim() yet to allow trailing spaces from AI
                 displayHTML = displayHTML.replace(/\s+/g, ' ');
                 
@@ -268,15 +307,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (thinkingIndicator && thinkingIndicator.parentNode) {
                 thinkingIndicator.parentNode.removeChild(thinkingIndicator);
             }
+            if (worksheetLoadingIndicator.val && worksheetLoadingIndicator.val.parentNode) {
+                worksheetLoadingIndicator.val.parentNode.removeChild(worksheetLoadingIndicator.val);
+                worksheetLoadingIndicator.val = null;
+            }
             if (fullAnswer) {
                 // Do nothing
             } else {
                 addBotMessage("Es gab ein Problem bei der Verarbeitung deiner Anfrage. Bitte versuche es später noch einmal.");
             }
-        };
-
-        eventSource.onclose = function() {
-            // Stream closed
         };
     }
 
@@ -429,7 +468,10 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         chatHistory.appendChild(messageElement);
 
-        if (worksheet_filename) {
+        if (worksheet_filename === 'PENDING') {
+            const indicatorRef = { val: null };
+            showWorksheetLoading(messageElement.querySelector('.flex-1'), indicatorRef);
+        } else if (worksheet_filename) {
             // Clean filename just in case
             worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
 
@@ -988,7 +1030,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            sessionElement.querySelector('.session-title').textContent = newName.trim();
+                            const titleEl = sessionElement.querySelector('.session-title');
+                            if (titleEl) animateTitleUpdate(titleEl, newName.trim());
                         } else {
                             alert(data.error || 'Fehler beim Umbenennen des Chats.');
                         }
@@ -1101,6 +1144,60 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Load current chat history on page load
-    loadChatHistory();
-});
+            // Check if a worksheet was being generated before reload
+
+            function checkWorksheetStatusOnLoad() {
+
+                fetch('/api/check-worksheet-status')
+
+                    .then(res => res.json())
+
+                    .then(data => {
+
+                        if (data.generating) {
+
+                            // Poll for completion
+
+                            const pollInterval = setInterval(() => {
+
+                                fetch('/get-chat-history')
+
+                                    .then(r => r.json())
+
+                                    .then(historyData => {
+
+                                        const history = historyData.chat_history;
+
+                                        const isStillPending = history.some(msg => msg.worksheet_filename === 'PENDING');
+
+                                        if (!isStillPending) {
+
+                                            clearInterval(pollInterval);
+
+                                            location.reload(); // Refresh to show the download buttons
+
+                                        }
+
+                                    });
+
+                            }, 3000);
+
+                        }
+
+                    });
+
+            }
+
+        
+
+    
+
+        // Load current chat history on page load
+
+        loadChatHistory();
+
+        setTimeout(checkWorksheetStatusOnLoad, 500);
+
+    });
+
+    

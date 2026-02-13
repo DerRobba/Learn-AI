@@ -5,11 +5,12 @@ import uuid
 import json
 import re
 import traceback
+import sqlite3
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet
 
 load_dotenv()
 
@@ -248,6 +249,12 @@ def ask():
         chat_session_id = str(uuid.uuid4())
         session['chat_session_id'] = chat_session_id
 
+    # Save user question to database immediately to ensure persistence
+    image_data_for_db = None
+    if cached_image:
+        image_data_for_db = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
+    save_chat_message(user_id, chat_session_id, 'user', question, image_data_for_db)
+
     def generate():
         try:
             from datetime import datetime
@@ -273,11 +280,6 @@ def ask():
             # Build conversation context from database
             conversation_context = system_prompt if system_prompt else ""
             
-            if math_solver_enabled:
-                 conversation_context += "\n\nZUSATZREGEL: Du darfst Matheaufgaben vollständig lösen und den Rechenweg zeigen. Die Regel 'keine Lösungen sagen' ist für diesen Benutzer AUFGEHOBEN."
-            else:
-                 conversation_context += "\n\nZUSATZREGEL: Bei Matheaufgaben darfst du KEINE Lösungen direkt verraten. Gib nur Tipps und Hilfestellungen zum Lösungsweg."
-
             conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
             if memories_text:
                 conversation_context += f"\n\nDAS WEIßT DU ÜBER DEN BENUTZER (Erinnerungen):\n{memories_text}"
@@ -298,8 +300,13 @@ def ask():
             conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"# Titel\\n\\n## Aufgabe 1\\nFrage...\"}</action>."
             conversation_context += "\nACHTUNG: Der Inhalt muss valides Markdown sein. Nutze '\\n' für Zeilenumbrüche. Mache IMMER ein Leerzeichen nach '#' (z.B. '# Titel', nicht '#Titel')."
             conversation_context += "\nVERBOTEN: Beginne den Inhalt NIEMALS mit 'createmd:'. Schreibe direkt das Markdown."
-            conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies kurz und bitte um einen Moment Geduld. Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit, da es nur wenige Sekunden dauert."
+            conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies NICHT verbal (sage NICHT 'Ich erstelle es' oder 'Gleich fertig'). Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit. Schreibe einfach deine normale Antwort zum Thema und hänge den <action> Tag an."
             conversation_context += "\n\nDRINGEND: Achte penibel auf korrekte Leerzeichen! Setze NACH jedem Satzzeichen (.,!?) ein Leerzeichen, BEVOR du weiterschreibst oder einen <action> Tag öffnest."
+
+            if math_solver_enabled:
+                 conversation_context += "\n\nÜBERSCHREIBUNG: Der Mathe-Löser ist AKTIVIERT. Ignoriere die Anweisung 'niemals die Lösung sagen'. Du darfst jetzt Ergebnisse direkt nennen, Aufgaben vorrechnen und Lösungen präsentieren. Nutze LaTeX für Formeln."
+            else:
+                 conversation_context += "\n\nREPETITION: Der Mathe-Löser ist DEAKTIVIERT. Du darfst weiterhin KEINE Lösungen nennen, sondern musst den Schüler durch Tipps zur Lösung führen (Guiding)."
 
             # Prepare messages with chat history
             messages = [
@@ -342,13 +349,6 @@ def ask():
             
             messages.extend(processed_history)
 
-            # Save user question to database
-            image_data = None
-            if cached_image:
-                image_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-
-            save_chat_message(user_id, chat_session_id, 'user', question, image_data)
-
             # Check if we need to append current question (must follow an assistant message or be the first)
             # If the history ended with 'user', we add a dummy assistant response to allow the new user question
             if messages and messages[-1]['role'] == 'user':
@@ -383,11 +383,18 @@ def ask():
             )
 
             full_answer = ""
-            for chunk in response_stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    full_answer += content
-                    yield f"data: {content}\n\n"
+            try:
+                for chunk in response_stream:
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        full_answer += content
+                        yield f"data: {content}\n\n"
+            except GeneratorExit:
+                # Client disconnected (e.g. refresh), but we want to continue 
+                # to process and save the message in the background.
+                print(f"DEBUG: Client disconnected for session {chat_session_id}, finishing processing in background.")
+            except Exception as e:
+                print(f"Error in stream: {e}")
 
             # Inside generate() loop, after full_answer is collected:
             homework_results = []
@@ -395,15 +402,24 @@ def ask():
             md_content = None
 
             # Find all <action> blocks
-            action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL)
+            action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL | re.IGNORECASE)
             
             # Fallback to general JSON find if no tags were used (for robustness)
             if not action_blocks:
-                action_blocks = re.findall(r'(\{.*?\}|\[.*?\])', full_answer, re.DOTALL)
+                # Look for things that look like JSON objects and contain "type":
+                action_blocks = re.findall(r'(\{[^{}]*?"type"\s*:\s*".*?"[^{}]*?\})', full_answer, re.DOTALL)
             
             for block in action_blocks:
                 try:
-                    res_data = json.loads(block)
+                    # Robustness: LLMs sometimes put literal newlines in JSON strings.
+                    # We try to parse it, and if it fails, we try to escape newlines.
+                    try:
+                        res_data = json.loads(block)
+                    except json.JSONDecodeError:
+                        # Try to replace literal newlines with \n
+                        fixed_block = block.replace('\n', '\\n').replace('\r', '\\r')
+                        res_data = json.loads(fixed_block)
+
                     if not isinstance(res_data, list):
                         res_list = [res_data]
                     else:
@@ -461,8 +477,53 @@ def ask():
                 except Exception:
                     continue
 
+            # Clean up message for storage (remove all JSON and tags)
+            display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
+            display_text = re.sub(r'(\{.*?\}|\[.*?\])', ' ', display_text)
+            display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
+            
+            # Additional cleanup for partial/unfinished tags or JSON at the end
+            display_text = re.sub(r'<action[\s\S]*$', ' ', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\{[^{}]*$', ' ', display_text)
+            
+            # Expanded filtering for redundant AI phrases
+            # We only remove them if there is other text, to avoid empty bubbles
+            redundant_phrases = [
+                r'Bitte hab einen Moment Geduld, während ich es generiere\.',
+                r'Bitte gib mir einen Moment, damit es vollständig generiert wird\.',
+                r'Ich habe das Arbeitsblatt erstellt!',
+                r'Ich habe das Arbeitsblatt vorbereitet\.',
+                r'Das Arbeitsblatt wird gerade erstellt\.'
+            ]
+            
+            # We use a temporary variable to check if filtering makes it empty
+            filtered_text = display_text
+            for phrase in redundant_phrases:
+                filtered_text = re.sub(phrase, '', filtered_text, flags=re.IGNORECASE)
+            
+            filtered_text = re.sub(r'\s+', ' ', filtered_text).strip()
+            if filtered_text:
+                display_text = filtered_text
+
+            # Save the message text IMMEDIATELY so it's persisted on reload
+            assistant_msg_id = None
+            if display_text or md_content:
+                initial_ws = 'PENDING' if md_content else None
+                assistant_msg_id = save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws)
+
             pdf_basename = None
             if md_content:
+                # Set session flag that generation is in progress (only if request context is active)
+                has_context = False
+                try:
+                    session['generating_worksheet'] = True
+                    has_context = True
+                except RuntimeError:
+                    pass
+
+                if has_context:
+                    yield "data: START_WORKSHEET_GENERATION\n\n"
+                
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename = f"sheets/{worksheet_uuid}.md"
                 pdf_filename = f"sheets/{worksheet_uuid}.pdf"
@@ -483,48 +544,43 @@ def ask():
                     pdf_basename = os.path.basename(pdf_filename)
                 except Exception as e:
                     print(f"PDF generation failed: {e}")
-                    yield "data: Fehler beim Erstellen des Arbeitsblatts.\n\n"
+                    if has_context:
+                        yield "data: Fehler bei der PDF-Erstellung. Lade die Markdown-Version herunter.\n\n"
+                    if os.path.exists(md_filename):
+                        pdf_basename = os.path.basename(md_filename)
 
-            # Clean up message for storage (remove all JSON and tags)
-            # We replace with a space first to prevent sentences sticking together, then clean double spaces
-            display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
-            display_text = re.sub(r'(\{.*?\}|\[.*?\])', ' ', display_text)
-            display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'\s+', ' ', display_text).strip()
+            # Update the message with the worksheet filename if we have one
+            if assistant_msg_id and pdf_basename:
+                update_chat_message_worksheet(assistant_msg_id, pdf_basename)
             
-            if not display_text:
+            # Clear generation flag (safely)
+            try:
+                session.pop('generating_worksheet', None)
+            except RuntimeError:
+                pass
+            
+            # Send final signals if context is still there
+            try:
                 if homework_results:
-                    display_text = "Erledigt: " + ", ".join(homework_results)
-                elif memory_results:
-                    display_text = "Ich habe mir das gemerkt."
+                    yield "data: HOMEWORK_UPDATED\n\n"
+                if pdf_basename:
+                    yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
+            except:
+                pass
             
-            if display_text:
-                save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=pdf_basename)
-            
-            if homework_results:
-                yield "data: HOMEWORK_UPDATED\n\n"
-            
-            if pdf_basename:
-                yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
-            
-            # Auto-naming: Only if this is the start of the conversation (e.g., <= 2 messages in history including the one just added)
-            # We count messages in chat_history. user msg + current assistant msg = 2 new ones. 
-            # If total history is small, we generate a title.
-            if len(chat_history) <= 1: # History before this turn was 0 or 1 message
+            # Auto-naming: Only if this is the start of the conversation
+            if len(chat_history) <= 2: 
                 try:
-                    title_prompt = "Fasse das Thema dieser Konversation in 1-4 Schlagworten zusammen. Antworte NUR mit den Schlagworten. KEINE ganzen Sätze. KEIN Satzzeichen am Ende."
-                    # We must append the assistant's answer to the history before asking for title, 
-                    # otherwise we have user-user sequence (question + title_prompt)
-                    title_messages = messages + [
-                        {"role": "assistant", "content": display_text if display_text else " "},
-                        {"role": "user", "content": title_prompt}
+                    # Use a very simple, direct prompt to summarize the USER'S question
+                    title_messages = [
+                        {"role": "system", "content": "Du bist ein hilfreicher Assistent, der Chat-Titel erstellt. Antworte NUR mit dem Titel (1-4 Schlagworte), kein Punkt am Ende."},
+                        {"role": "user", "content": f"Fasse diese Benutzeranfrage kurz zusammen: {question}"}
                     ]
                     
-                    # Short context call for title
                     title_response = client.chat.completions.create(
                         model=MODEL,
                         messages=title_messages,
-                        max_tokens=15
+                        max_tokens=20
                     )
                     new_title = title_response.choices[0].message.content.strip().strip('"').strip('.')
                     if new_title:
@@ -575,6 +631,18 @@ def get_current_chat_history():
 
     chat_history = get_chat_history(user_id, chat_session_id)
     return jsonify({'chat_history': chat_history})
+
+@app.route('/api/check-worksheet-status')
+def check_worksheet_status():
+    if 'user_id' not in session or 'chat_session_id' not in session:
+        return jsonify({'generating': False})
+    
+    user_id = session['user_id']
+    chat_session_id = session['chat_session_id']
+    history = get_chat_history(user_id, chat_session_id)
+    is_generating = any(msg.get('worksheet_filename') == 'PENDING' for msg in history)
+    
+    return jsonify({'generating': is_generating})
 
 @app.route('/download-worksheet/<filename>')
 def download_sheet(filename):

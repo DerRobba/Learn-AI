@@ -329,9 +329,25 @@ def save_chat_message(user_id, session_id, message_type, content, image_data=Non
         INSERT INTO chat_history (user_id, session_id, message_type, content, image_data, worksheet_filename)
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (user_id, session_id, message_type, content, image_data, worksheet_filename))
-
+    
+    last_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return last_id
+
+def update_chat_message_worksheet(message_id, worksheet_filename):
+    """Update a chat message with a worksheet filename"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE chat_history SET worksheet_filename = ? WHERE id = ?', (worksheet_filename, message_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
 
 def get_chat_history(user_id, session_id):
     """Get chat history for a specific user and session"""
@@ -360,7 +376,7 @@ def get_user_chat_sessions(user_id):
             session_id, 
             MIN(created_at) as first_message, 
             MAX(created_at) as last_message,
-            COALESCE(session_name, content) as session_name
+            COALESCE(session_name, 'Neuer Chat') as session_name
         FROM chat_history
         WHERE user_id = ?
         GROUP BY session_id
