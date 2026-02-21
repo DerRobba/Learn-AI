@@ -10,7 +10,7 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries
 
 load_dotenv()
 
@@ -45,6 +45,29 @@ def get_teachers():
     school = session.get('school')
     teachers = get_teacher_usernames_for_school(school)
     return jsonify(teachers)
+
+@app.route('/api/chat-subjects')
+def api_get_chat_subjects():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    user_id = session['user_id']
+    subjects = get_unique_chat_subjects(user_id)
+    return jsonify(subjects)
+
+@app.route('/api/chat-sessions-by-subject')
+def api_get_chat_sessions_by_subject():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    user_id = session['user_id']
+    subject = request.args.get('subject')
+    
+    if not subject:
+        return jsonify({'error': 'Betreff ist erforderlich'}), 400
+        
+    sessions = get_chat_sessions_by_subject(user_id, subject)
+    return jsonify(sessions)
 
 # Initialize database
 init_database()
@@ -249,11 +272,15 @@ def ask():
         chat_session_id = str(uuid.uuid4())
         session['chat_session_id'] = chat_session_id
 
-    # Save user question to database immediately to ensure persistence
-    image_data_for_db = None
-    if cached_image:
-        image_data_for_db = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-    save_chat_message(user_id, chat_session_id, 'user', question, image_data_for_db)
+    # Get existing chat history to determine current subject (if any)
+    existing_chat_history = get_chat_history(user_id, chat_session_id)
+    current_chat_subject = None
+    if existing_chat_history:
+        # Assuming chat_subject will be consistent across a session once set
+        current_chat_subject = existing_chat_history[0].get('chat_subject')
+
+    # Get previous chat summaries for AI context
+    earlier_chat_summaries = get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
 
     def generate():
         try:
@@ -284,6 +311,12 @@ def ask():
             if memories_text:
                 conversation_context += f"\n\nDAS WEIßT DU ÜBER DEN BENUTZER (Erinnerungen):\n{memories_text}"
             
+            # Add previous chats context
+            if earlier_chat_summaries:
+                conversation_context += f"\n\nFRÜHERE CHATS (für Kontext):\n" + "\n".join(earlier_chat_summaries)
+            else:
+                conversation_context += "\n\nFRÜHERE CHATS: Keine früheren Chats vorhanden."
+            
             conversation_context += f"\n\nDeine aktuelle Hausaufgaben-Liste: {json.dumps(current_homework)}"
             conversation_context += f"\nDeine verfügbaren Fächer: {json.dumps(current_subjects)}"
             conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben eintragen, bearbeiten oder löschen."
@@ -302,6 +335,11 @@ def ask():
             conversation_context += "\nVERBOTEN: Beginne den Inhalt NIEMALS mit 'createmd:'. Schreibe direkt das Markdown."
             conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies NICHT verbal (sage NICHT 'Ich erstelle es' oder 'Gleich fertig'). Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit. Schreibe einfach deine normale Antwort zum Thema und hänge den <action> Tag an."
             conversation_context += "\n\nDRINGEND: Achte penibel auf korrekte Leerzeichen! Setze NACH jedem Satzzeichen (.,!?) ein Leerzeichen, BEVOR du weiterschreibst oder einen <action> Tag öffnest."
+            conversation_context += "\n\nCHAT-THEMA FESTLEGEN: Setze das Thema des Chats mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[DEIN THEMA AUF DEUTSCH]\"}</action>. Dies soll NUR EINMAL am Anfang des Chats geschehen, wenn das Thema klar ist. Verwende max. 1-3 Wörter und IMMER AUF DEUTSCH."
+            if current_chat_subject:
+                conversation_context += f"\nINFO: Das aktuelle Chat-Thema ist '{current_chat_subject}'. Es wurde bereits festgelegt."
+            else:
+                conversation_context += "\nINFO: Es ist noch kein Chat-Thema festgelegt. Bitte lege eines fest, sobald es klar ist."
 
             if math_solver_enabled:
                  conversation_context += "\n\nÜBERSCHREIBUNG: Der Mathe-Löser ist AKTIVIERT. Ignoriere die Anweisung 'niemals die Lösung sagen'. Du darfst jetzt Ergebnisse direkt nennen, Aufgaben vorrechnen und Lösungen präsentieren. Nutze LaTeX für Formeln."
@@ -474,6 +512,11 @@ def ask():
                                 elif action_type == 'delete':
                                     if delete_memory_by_content(user_id, content):
                                         memory_results.append("Erinnerung aktualisiert")
+                        elif res.get('type') == 'set_chat_subject':
+                            subject = res.get('subject')
+                            if subject:
+                                update_chat_session_subject(user_id, chat_session_id, subject)
+                                yield f"data: SESSION_SUBJECT:{subject}\n\n"
                 except Exception:
                     continue
 
@@ -509,7 +552,7 @@ def ask():
             assistant_msg_id = None
             if display_text or md_content:
                 initial_ws = 'PENDING' if md_content else None
-                assistant_msg_id = save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws)
+                assistant_msg_id = save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
 
             pdf_basename = None
             if md_content:
@@ -652,6 +695,66 @@ def download_sheet(filename):
         return send_file(os.path.join('sheets', filename), as_attachment=True)
     except Exception as e:
         print(f"Error sending file: {e}")
+        return abort(404)
+
+@app.route('/preview-worksheet/<filename>')
+def preview_worksheet(filename):
+    """Dient das Arbeitsblatt inline zur Vorschau (nicht zum Download)"""
+    try:
+        # Filename validieren um Directory-Traversal zu verhindern
+        filename = os.path.basename(filename)
+        dateiendung = os.path.splitext(filename)[1].lower()
+        
+        # Für PDF direkt servieren
+        if dateiendung == '.pdf':
+            return send_file(os.path.join('sheets', filename), mimetype='application/pdf')
+        # Für Markdown in HTML umwandeln
+        elif dateiendung == '.md':
+            datei_pfad = os.path.join('sheets', filename)
+            if os.path.exists(datei_pfad):
+                with open(datei_pfad, 'r', encoding='utf-8') as f:
+                    markdown_inhalt = f.read()
+                
+                # JSON-Encode zum sicheren Einfügen in JavaScript
+                markdown_json = json.dumps(markdown_inhalt)
+                
+                # Einfache HTML-Seite mit Markdown anzeigen
+                html = f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbeitsblatt Vorschau</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <style>
+        body {{
+            font-family: 'Inter', sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }}
+        h1, h2, h3 {{ color: #6b46c1; margin-top: 20px; }}
+        code {{ background: #f3f4f6; padding: 2px 6px; border-radius: 3px; }}
+        pre {{ background: #f3f4f6; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+    </style>
+</head>
+<body>
+    <div id="content"></div>
+    <script>
+        const markdown = {markdown_json};
+        document.getElementById('content').innerHTML = marked.parse(markdown);
+    </script>
+</body>
+</html>"""
+                return Response(html, mimetype='text/html; charset=utf-8')
+            else:
+                return abort(404)
+        else:
+            return abort(404)
+    except Exception as e:
+        print(f"Fehler beim Anzeigen der Vorschau: {e}")
         return abort(404)
 
 @app.route('/')
