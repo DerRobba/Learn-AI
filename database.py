@@ -119,6 +119,7 @@ def init_database():
             content TEXT NOT NULL,
             image_data TEXT,
             worksheet_filename TEXT,
+            chat_subject TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
@@ -127,6 +128,13 @@ def init_database():
     # Add worksheet_filename column to chat_history table if it doesn't exist
     try:
         cursor.execute("ALTER TABLE chat_history ADD COLUMN worksheet_filename TEXT")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            pass # Column already exists
+    
+    # Add chat_subject column to chat_history table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN chat_subject TEXT")
     except sqlite3.OperationalError as e:
         if 'duplicate column name' not in str(e):
             pass # Column already exists
@@ -320,15 +328,15 @@ def get_all_users():
 
     return [{'id': u[0], 'username': u[1], 'password': u[2], 'user_type': u[3], 'created_at': u[4]} for u in users]
 
-def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None):
+def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None, chat_subject=None):
     """Save a chat message to the database"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT INTO chat_history (user_id, session_id, message_type, content, image_data, worksheet_filename)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (user_id, session_id, message_type, content, image_data, worksheet_filename))
+        INSERT INTO chat_history (user_id, session_id, message_type, content, image_data, worksheet_filename, chat_subject)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, session_id, message_type, content, image_data, worksheet_filename, chat_subject))
     
     last_id = cursor.lastrowid
     conn.commit()
@@ -376,7 +384,8 @@ def get_user_chat_sessions(user_id):
             session_id, 
             MIN(created_at) as first_message, 
             MAX(created_at) as last_message,
-            COALESCE(session_name, 'Neuer Chat') as session_name
+            COALESCE(session_name, 'Neuer Chat') as session_name,
+            MAX(chat_subject) as chat_subject
         FROM chat_history
         WHERE user_id = ?
         GROUP BY session_id
@@ -386,7 +395,47 @@ def get_user_chat_sessions(user_id):
     sessions = cursor.fetchall()
     conn.close()
 
-    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3]} for s in sessions]
+    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3], 'chat_subject': s[4]} for s in sessions]
+
+def get_chat_sessions_by_subject(user_id, subject):
+    """Get chat sessions for a user filtered by subject"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT 
+            session_id, 
+            MIN(created_at) as first_message, 
+            MAX(created_at) as last_message,
+            COALESCE(session_name, 'Neuer Chat') as session_name,
+            MAX(chat_subject) as chat_subject
+        FROM chat_history
+        WHERE user_id = ? AND chat_subject = ?
+        GROUP BY session_id
+        ORDER BY last_message DESC
+    ''', (user_id, subject))
+
+    sessions = cursor.fetchall()
+    conn.close()
+
+    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3], 'chat_subject': s[4]} for s in sessions]
+
+def get_unique_chat_subjects(user_id):
+    """Get all unique chat subjects for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT DISTINCT chat_subject
+        FROM chat_history
+        WHERE user_id = ? AND chat_subject IS NOT NULL AND chat_subject != ''
+        ORDER BY chat_subject ASC
+    ''', (user_id,))
+
+    subjects = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in subjects]
 
 def delete_chat_session(user_id, session_id):
     """Delete a chat session for a user"""
@@ -410,6 +459,21 @@ def rename_chat_session(user_id, session_id, new_name):
 
     try:
         cursor.execute('UPDATE chat_history SET session_name = ? WHERE user_id = ? AND session_id = ?', (new_name, user_id, session_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def update_chat_session_subject(user_id, session_id, subject):
+    """Update the subject for all chat messages in a given session"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('UPDATE chat_history SET chat_subject = ? WHERE user_id = ? AND session_id = ?', (subject, user_id, session_id))
         conn.commit()
         return True
     except sqlite3.Error as e:
@@ -809,3 +873,54 @@ def get_math_solver_status(user_id):
     result = cursor.fetchone()
     conn.close()
     return bool(result[0]) if result else False
+def get_all_previous_chats_summaries(user_id, exclude_session_id=None):
+    """Get summaries of all previous chats for a user to provide context to the AI"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    # Get all chat sessions with their messages
+    if exclude_session_id:
+        cursor.execute('''
+            SELECT 
+                session_id, 
+                session_name,
+                chat_subject,
+                GROUP_CONCAT(CASE WHEN message_type IN ('user', 'assistant') 
+                    THEN '[' || message_type || ']: ' || substr(content, 1, 100)
+                    ELSE NULL END, ' | ')
+            FROM chat_history
+            WHERE user_id = ? AND session_id != ?
+            GROUP BY session_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 20
+        ''', (user_id, exclude_session_id))
+    else:
+        cursor.execute('''
+            SELECT 
+                session_id, 
+                session_name,
+                chat_subject,
+                GROUP_CONCAT(CASE WHEN message_type IN ('user', 'assistant') 
+                    THEN '[' || message_type || ']: ' || substr(content, 1, 100)
+                    ELSE NULL END, ' | ')
+            FROM chat_history
+            WHERE user_id = ?
+            GROUP BY session_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 20
+        ''', (user_id,))
+
+    sessions = cursor.fetchall()
+    conn.close()
+
+    summaries = []
+    for session in sessions:
+        session_id, session_name, chat_subject, messages_preview = session
+        summary = f"- {session_name or 'Neuer Chat'}"
+        if chat_subject:
+            summary += f" (Thema: {chat_subject})"
+        if messages_preview:
+            summary += f": {messages_preview}"
+        summaries.append(summary)
+    
+    return summaries

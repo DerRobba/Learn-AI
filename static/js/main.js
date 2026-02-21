@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const cachedImageIndicator = document.getElementById('cached-image-indicator');
     const newChatBtn = document.getElementById('new-chat-btn');
     const chatInput = document.getElementById('chat-input');
+    
+    // Chat Subject Filter Elements
+    const chatSubjectFilterContainer = document.getElementById('chat-subject-filter-container');
+    const chatSubjectFilter = document.getElementById('chat-subject-filter');
 
     function animateTitleUpdate(element, newTitle) {
         element.textContent = newTitle;
@@ -120,6 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
             chatSessionsContainer.classList.remove('hidden');
             assignmentListContainer.classList.add('hidden');
             homeworkListContainer.classList.add('hidden');
+            chatSubjectFilterContainer.classList.remove('hidden'); // Show filter
         });
     }
 
@@ -137,6 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
             assignmentListContainer.classList.remove('hidden');
             chatSessionsContainer.classList.add('hidden');
             homeworkListContainer.classList.add('hidden');
+            chatSubjectFilterContainer.classList.add('hidden'); // Hide filter
         });
     }
 
@@ -154,6 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
             homeworkListContainer.classList.remove('hidden');
             chatSessionsContainer.classList.add('hidden');
             assignmentListContainer.classList.add('hidden');
+            chatSubjectFilterContainer.classList.add('hidden'); // Hide filter
         });
     }
 
@@ -241,11 +248,42 @@ document.addEventListener('DOMContentLoaded', function() {
                     worksheetLoadingIndicator.val = null;
                 }
 
-                const downloadButton = document.createElement('a');
-                downloadButton.href = `/download-worksheet/${worksheet_filename}`;
-                downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
-                downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
-                botMessageElement.querySelector('.flex-1').appendChild(downloadButton);
+                // Ermittle Dateiendung
+                const dateiendung = worksheet_filename.split('.').pop().toLowerCase();
+                
+                // Container für Arbeitsblatt-Vorschau
+                const arbeitsblattContainer = document.createElement('div');
+                arbeitsblattContainer.className = 'mt-3 border border-purple-200 rounded-lg overflow-hidden bg-white';
+                
+                // Für PDF: Inline-Vorschau mit iframe
+                if (dateiendung === 'pdf') {
+                    arbeitsblattContainer.innerHTML = `
+                        <iframe src="/preview-worksheet/${worksheet_filename}" 
+                                style="width: 100%; height: 500px; border: none;"></iframe>
+                    `;
+                } 
+                // Für Markdown: Inline-Vorschau
+                else if (dateiendung === 'md') {
+                    arbeitsblattContainer.innerHTML = `
+                        <iframe src="/preview-worksheet/${worksheet_filename}" 
+                                style="width: 100%; height: 500px; border: none; background: white;"></iframe>
+                    `;
+                }
+                
+                // Download-Button unter Vorschau
+                const downloadButtonContainer = document.createElement('div');
+                downloadButtonContainer.className = 'p-3 bg-gray-50 border-t border-purple-200 flex items-center justify-between';
+                downloadButtonContainer.innerHTML = `
+                    <span class="text-sm text-gray-600">Arbeitsblatt-Vorschau</span>
+                    <a href="/download-worksheet/${worksheet_filename}" 
+                       class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+                        <span class="material-symbols-outlined text-sm mr-1">download</span>
+                        Herunterladen
+                    </a>
+                `;
+                
+                arbeitsblattContainer.appendChild(downloadButtonContainer);
+                botMessageElement.querySelector('.flex-1').appendChild(arbeitsblattContainer);
             } else if (trimmedContent.startsWith("SESSION_TITLE:")) {
                 const newTitle = trimmedContent.substring("SESSION_TITLE:".length);
                 const activeSession = document.querySelector('.chat-session.bg-purple-100');
@@ -253,8 +291,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     const titleEl = activeSession.querySelector('.session-title');
                     if (titleEl) animateTitleUpdate(titleEl, newTitle);
                 }
+            } else if (trimmedContent.startsWith("SESSION_SUBJECT:")) {
+                const neuesThema = trimmedContent.substring("SESSION_SUBJECT:".length);
+                const activChat = document.querySelector('.chat-session.bg-purple-100');
+                if (activChat) {
+                    // Update or create the subject element
+                    let subjectEl = activChat.querySelector('.session-subject');
+                    if (!subjectEl) {
+                        subjectEl = document.createElement('span');
+                        subjectEl.className = 'session-subject text-xs text-gray-600 truncate';
+                        activChat.querySelector('.flex-col').appendChild(subjectEl);
+                    }
+                    subjectEl.textContent = `Thema: ${neuesThema}`;
+                    activChat.dataset.chatSubject = neuesThema;
+                }
+                // Aktualisiere auch die Thema-Filter-Optionen
+                loadChatSubjects();
             } else if (trimmedContent === "START_WORKSHEET_GENERATION") {
-                console.log("Worksheet generation started...");
+                console.log("Arbeitsblatt-Generierung gestartet...");
                 showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
             } else if (trimmedContent === "HOMEWORK_UPDATED") {
                 // Reload or update specific UI part
@@ -577,7 +631,95 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Chat session management
+    // Global variable to store all chat sessions
+    let allChatSessions = [];
+
+    // Get the current session ID from the element in the DOM (set by Flask)
+    // This value is initially rendered by Flask and available in the DOM
+    const currentSessionId = document.querySelector('.chat-session.bg-purple-100')?.dataset.sessionId;
+
+    function renderChatSessions(sessionsToRender) {
+        if (!chatSessionsContainer) return;
+        chatSessionsContainer.innerHTML = ''; // Clear existing sessions
+
+        if (sessionsToRender.length === 0) {
+            chatSessionsContainer.innerHTML = `
+                <p class="text-center text-gray-500 text-sm mt-4">Keine Chats gefunden.</p>
+            `;
+            return;
+        }
+
+        sessionsToRender.forEach(session => {
+            const sessionElement = document.createElement('div');
+            sessionElement.className = `chat-session p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-purple-200 cursor-pointer transition-all duration-300 active:bg-purple-50 ${session.session_id === currentSessionId ? 'bg-purple-100 border-purple-300' : ''}`;
+            sessionElement.dataset.sessionId = session.session_id;
+            sessionElement.dataset.chatSubject = session.chat_subject || '';
+            sessionElement.style.touchAction = 'manipulation';
+            
+            let subjectHtml = '';
+            if (session.chat_subject) {
+                subjectHtml = `<span class="session-subject text-xs text-gray-600 truncate">Thema: ${session.chat_subject}</span>`;
+            }
+
+            sessionElement.innerHTML = `
+                <div class="flex flex-col space-y-1 pointer-events-none">
+                    <span class="session-title text-sm font-medium text-gray-800 truncate">${session.session_name}</span>
+                    ${subjectHtml}
+                    <span class="session-date text-xs text-gray-500">${session.last_message ? session.last_message.substring(0, 16) : ''}</span>
+                </div>
+            `;
+            chatSessionsContainer.appendChild(sessionElement);
+        });
+    }
+
+    function loadChatSubjects() {
+        if (!chatSubjectFilter) return;
+
+        fetch('/api/chat-subjects')
+            .then(response => response.json())
+            .then(subjects => {
+                // Clear existing options except "Alle Chats"
+                chatSubjectFilter.innerHTML = '<option value="all">Alle Chats</option>';
+                subjects.forEach(subject => {
+                    const option = document.createElement('option');
+                    option.value = subject;
+                    option.textContent = subject;
+                    chatSubjectFilter.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading chat subjects:', error);
+            });
+    }
+
+    function filterChatSessions() {
+        const selectedSubject = chatSubjectFilter.value;
+        if (selectedSubject === 'all') {
+            renderChatSessions(allChatSessions);
+        } else {
+            const filteredSessions = allChatSessions.filter(session => session.chat_subject === selectedSubject);
+            renderChatSessions(filteredSessions);
+        }
+    }
+
+    // Event-Listener für Filter-Dropdown
+    if (chatSubjectFilter) {
+        chatSubjectFilter.addEventListener('change', filterChatSessions);
+    }
+
+    function loadAllChatSessionsAndRender() {
+        fetch('/get-user-chat-sessions') // This endpoint provides all sessions for the current user
+        .then(response => response.json())
+        .then(sessions => {
+            allChatSessions = sessions; // Store all sessions
+            renderChatSessions(allChatSessions); // Render initially unfiltered
+            loadChatSubjects(); // Populate filter dropdown
+        })
+        .catch(error => {
+            console.error('Error loading all chat sessions:', error);
+        });
+    }
+
     function loadChatHistory() {
         fetch('/get-chat-history')
         .then(response => response.json())
@@ -1193,8 +1335,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
 
         // Load current chat history on page load
-
         loadChatHistory();
+        
+        // Load all chat sessions and render them with filter
+        loadAllChatSessionsAndRender();
 
         setTimeout(checkWorksheetStatusOnLoad, 500);
 
