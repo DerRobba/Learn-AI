@@ -6,16 +6,44 @@ import json
 import re
 import traceback
 import sqlite3
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries, get_session_name
 
 load_dotenv()
 
+# Global tracking for active generation sessions
+generating_sessions = {}
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
+
+def convert_to_iso_date(date_str):
+    if not date_str:
+        return date_str
+    # Check if already ISO format (YYYY-MM-DD)
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+    # Check if German format DD.MM.YYYY
+    match = re.match(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$', date_str)
+    if match:
+        d, m, y = match.groups()
+        return f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+    return date_str
+
+@app.template_filter('german_date')
+def german_date_filter(date_str):
+    if not date_str:
+        return ""
+    # Try to match YYYY-MM-DD (possibly with time)
+    match = re.search(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+    if match:
+        y, m, d = match.groups()
+        return f"{d}.{m}.{y}"
+    return date_str
 
 @app.route('/api/schools')
 def get_schools():
@@ -80,13 +108,13 @@ if not os.path.exists('sheets'):
 if not os.path.exists('uploads'):
     os.makedirs('uploads')
 
-BASE_URL = os.getenv("BASE_URL")
-MODEL = os.getenv("MODEL")
+BASE_URL = os.getenv("BASE_URL", "https://openrouter.ai/api/v1")
+MODEL = os.getenv("MODEL", "google/gemma-3-27b-it:free")
 API_KEY = os.getenv("API_KEY")
 
 
 client = OpenAI(
-    base_url = BASE_URL,
+    base_url = BASE_URL if BASE_URL else "https://openrouter.ai/api/v1",
     api_key=API_KEY
 )
 
@@ -227,21 +255,18 @@ def new_chat():
             print(f"Error deleting cached image: {e}")
 
     # Insert welcome message to persist session
-    save_chat_message(session['user_id'], new_session_id, 'assistant', 'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!')
+    save_chat_message(session['user_id'], new_session_id, 'assistant', 'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!', session_name='Neuer Chat')
 
     return jsonify({'session_id': new_session_id})
 
 @app.route('/ask')
 def ask():
-    if 'user_id' not in session:
-        return jsonify({'answer': 'Bitte melden Sie sich an.'}), 401
-
+    user_id = session.get('user_id')
     question = request.args.get('question')
 
     if not question:
         return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
 
-    user_id = session['user_id']
     chat_session_id = session.get('chat_session_id')
     cached_image_filename = session.get('cached_image_filename')
     cached_image = None
@@ -252,73 +277,76 @@ def ask():
             with open(image_path, "rb") as f:
                 image_data = f.read()
             base64_image = base64.b64encode(image_data).decode('utf-8')
-            
-            # Get mime type from filename extension
             mime_type = 'image/' + os.path.splitext(cached_image_filename)[1][1:]
-
-            cached_image = {
-                'base64': base64_image,
-                'mime_type': mime_type,
-                'filename': cached_image_filename
-            }
-            # Clear from session so it's only used once
+            cached_image = {'base64': base64_image, 'mime_type': mime_type, 'filename': cached_image_filename}
             session.pop('cached_image_filename', None)
-            print(f"DEBUG: Cached image loaded and cleared from session: {cached_image_filename}")
         except Exception as e:
             print(f"Error reading cached image: {e}")
 
+    # Determine user_id (0 for guests)
+    db_user_id = user_id if user_id else 0
 
     if not chat_session_id:
         chat_session_id = str(uuid.uuid4())
         session['chat_session_id'] = chat_session_id
 
-    # Get existing chat history to determine current subject (if any)
-    existing_chat_history = get_chat_history(user_id, chat_session_id)
-    current_chat_subject = None
-    if existing_chat_history:
-        # Assuming chat_subject will be consistent across a session once set
-        current_chat_subject = existing_chat_history[0].get('chat_subject')
+    # Save user message to database
+    img_data = None
+    if cached_image:
+        img_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
+    
+    save_chat_message(db_user_id, chat_session_id, 'user', question, image_data=img_data)
 
-    # Get previous chat summaries for AI context
-    earlier_chat_summaries = get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
+    # Get existing chat history and other context
+    if user_id:
+        existing_chat_history = get_chat_history(user_id, chat_session_id)
+        current_chat_subject = existing_chat_history[0].get('chat_subject') if existing_chat_history else None
+        earlier_chat_summaries = get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
+        current_homework = get_homework_for_user(user_id)[:15]
+        current_subjects = get_subjects(user_id)
+        user_memories = get_memories(user_id)
+        memories_text = "\n".join([f"- {m['content']}" for m in user_memories])
+        math_solver_enabled = get_math_solver_status(user_id)
+    else:
+        existing_chat_history = get_chat_history(0, chat_session_id)
+        current_chat_subject = None
+        earlier_chat_summaries = []
+        current_homework = []
+        current_subjects = []
+        memories_text = ""
+        math_solver_enabled = False
+
+    # Capture static copy for generator
+    chat_history_for_gen = list(existing_chat_history)
 
     def generate():
+        nonlocal current_chat_subject
+        # Track that this session is generating
+        generating_sessions[chat_session_id] = True
+        client_disconnected = False
+        full_answer = ""
+        
         try:
-            from datetime import datetime
-            # Get current date info
             now = datetime.now()
             current_date_str = now.strftime("%Y-%m-%d")
             current_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][now.weekday()]
 
-            # Get existing chat history for context
-            chat_history = get_chat_history(user_id, chat_session_id)
-            
-            # Get current homework and subjects for context (limit to recent 15)
-            current_homework = get_homework_for_user(user_id)[:15]
-            current_subjects = get_subjects(user_id)
-            
-            # Get user memories
-            user_memories = get_memories(user_id)
-            memories_text = "\n".join([f"- {m['content']}" for m in user_memories])
-
-            # Get math solver status
-            math_solver_enabled = get_math_solver_status(user_id)
-
-            # Build conversation context from database
+            # Build conversation context
             conversation_context = system_prompt if system_prompt else ""
-            
             conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
+            
+            if not user_id:
+                conversation_context += "\n\nHINWEIS: Du sprichst mit einem GAST. Er ist nicht angemeldet. Weise ihn NUR DANN dezent auf die Anmeldung hin, wenn er fragt, wie er seine Daten dauerhaft speichern kann."
+
             if memories_text:
                 conversation_context += f"\n\nDAS WEIßT DU ÜBER DEN BENUTZER (Erinnerungen):\n{memories_text}"
             
-            # Add previous chats context
             if earlier_chat_summaries:
                 conversation_context += f"\n\nFRÜHERE CHATS (für Kontext):\n" + "\n".join(earlier_chat_summaries)
-            else:
-                conversation_context += "\n\nFRÜHERE CHATS: Keine früheren Chats vorhanden."
             
             conversation_context += f"\n\nDeine aktuelle Hausaufgaben-Liste: {json.dumps(current_homework)}"
             conversation_context += f"\nDeine verfügbaren Fächer: {json.dumps(current_subjects)}"
+            
             conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben eintragen, bearbeiten oder löschen."
             conversation_context += "\nWenn du eine Aktion durchführst, schreibe ZUERST deine Antwort an den Benutzer und füge AM ENDE deiner Nachricht die Aktion im JSON-Format zwischen <action> und </action> Tags ein."
             conversation_context += "\nBeispiel: Ich habe Mathe eingetragen. <action>{\"type\": \"homework_action\", \"action\": \"create\", \"title\": \"Mathe S.12\", \"due_date\": \"YYYY-MM-DD\", \"subject_name\": \"Mathe\"}</action>"
@@ -328,323 +356,234 @@ def ask():
             conversation_context += "\nINFO: Wenn du eine Erinnerung speicherst, erwähne beiläufig, dass der Benutzer diese jederzeit in den Einstellungen (Zahnrad-Symbol) verwalten oder löschen kann."
             conversation_context += "\n\nKONFLIKTE LÖSEN: Wenn eine neue Information einer alten widerspricht (z.B. Benutzer heißt jetzt Peter statt Bo), LÖSCHE die alte Erinnerung!"
             conversation_context += "\nZum Löschen nutze: <action>{\"type\": \"memory_action\", \"action\": \"delete\", \"content\": \"EXAKTER INHALT DERALTEN ERINNERUNG\"}</action>"
-            conversation_context += "\n\nWICHTIG: Nutze für 'due_date' IMMER das Format YYYY-MM-DD. Wenn der Benutzer 'morgen' sagt, berechne das Datum basierend auf HEUTE."
+            conversation_context += "\n\nWICHTIG: Nutze für 'due_date' IMMER das deutsche Format DD.MM.YYYY. Wenn der Benutzer 'morgen' sagt, berechne das Datum basierend auf HEUTE."
             conversation_context += "\n\nWICHTIG: Benutze NIEMALS JSON-Code außerhalb von <action> Tags. Erstelle neue Fächer automatisch, indem du den 'subject_name' angibst."
             conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"# Titel\\n\\n## Aufgabe 1\\nFrage...\"}</action>."
             conversation_context += "\nACHTUNG: Der Inhalt muss valides Markdown sein. Nutze '\\n' für Zeilenumbrüche. Mache IMMER ein Leerzeichen nach '#' (z.B. '# Titel', nicht '#Titel')."
-            conversation_context += "\nVERBOTEN: Beginne den Inhalt NIEMALS mit 'createmd:'. Schreibe direkt das Markdown."
+            
             conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies NICHT verbal (sage NICHT 'Ich erstelle es' oder 'Gleich fertig'). Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit. Schreibe einfach deine normale Antwort zum Thema und hänge den <action> Tag an."
             conversation_context += "\n\nDRINGEND: Achte penibel auf korrekte Leerzeichen! Setze NACH jedem Satzzeichen (.,!?) ein Leerzeichen, BEVOR du weiterschreibst oder einen <action> Tag öffnest."
-            conversation_context += "\n\nCHAT-THEMA FESTLEGEN: Setze das Thema des Chats mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[DEIN THEMA AUF DEUTSCH]\"}</action>. Dies soll NUR EINMAL am Anfang des Chats geschehen, wenn das Thema klar ist. Verwende max. 1-3 Wörter und IMMER AUF DEUTSCH."
+            conversation_context += "\n\nCHAT-FACH FESTLEGEN: Setze das Fach des Chats mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[DAS SCHULFACH]\"}</action>. Dies soll NUR EINMAL am Anfang des Chats geschehen, wenn das Fach klar ist (z.B. Mathe, Deutsch, Physik). Nutze eines der verfügbaren Fächer, falls passend."
+            
             if current_chat_subject:
-                conversation_context += f"\nINFO: Das aktuelle Chat-Thema ist '{current_chat_subject}'. Es wurde bereits festgelegt."
+                conversation_context += f"\nINFO: Das aktuelle Fach ist '{current_chat_subject}'. Es wurde bereits festgelegt."
             else:
-                conversation_context += "\nINFO: Es ist noch kein Chat-Thema festgelegt. Bitte lege eines fest, sobald es klar ist."
+                conversation_context += "\nINFO: Es ist noch kein Fach festgelegt. Bitte ordne den Chat einem Fach zu, sobald es klar ist."
 
             if math_solver_enabled:
-                 conversation_context += "\n\nÜBERSCHREIBUNG: Der Mathe-Löser ist AKTIVIERT. Ignoriere die Anweisung 'niemals die Lösung sagen'. Du darfst jetzt Ergebnisse direkt nennen, Aufgaben vorrechnen und Lösungen präsentieren. Nutze LaTeX für Formeln."
+                 conversation_context += "\n\nÜBERSCHREIBUNG: Der Mathe-Löser ist AKTIVIERT. Ignoriere die Anweisung 'niemals die Lösung sagen'. Du darfst jetzt Ergebnisse direkt nennen, Aufgaben vorrechnen und Lösungen präsentieren. Nuze LaTeX für Formeln."
             else:
                  conversation_context += "\n\nREPETITION: Der Mathe-Löser ist DEAKTIVIERT. Du darfst weiterhin KEINE Lösungen nennen, sondern musst den Schüler durch Tipps zur Lösung führen (Guiding)."
 
-            # Prepare messages with chat history
-            messages = [
-                {"role": "system", "content": conversation_context}
-            ]
-
-            # Reconstruct history strictly alternating
             processed_history = []
-            for msg in chat_history:
+            for msg in chat_history_for_gen:
                 role = msg['message_type']
-                if role not in ['user', 'assistant']:
-                    continue
-                
+                if role not in ['user', 'assistant']: continue
                 content = msg['content']
                 img = msg.get('image_data')
-                
                 if role == 'user' and img:
-                    msg_obj = {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": content},
-                            {"type": "image_url", "image_url": {"url": img}}
-                        ]
-                    }
+                    msg_obj = {"role": "user", "content": [{"type": "text", "text": content}, {"type": "image_url", "image_url": {"url": img}}]}
                 else:
                     msg_obj = {"role": role, "content": content}
 
                 if not processed_history:
-                    # The first message after system should ideally be 'user'
-                    # If history starts with 'assistant' (e.g. the welcome message), we skip it for the AI context
-                    if role == 'user':
-                        processed_history.append(msg_obj)
+                    if role == 'user': processed_history.append(msg_obj)
                 else:
-                    # Ensure alternating roles
-                    if role != processed_history[-1]['role']:
-                        processed_history.append(msg_obj)
-                    else:
-                        # Same role twice: merge content
-                        processed_history[-1]['content'] = str(processed_history[-1]['content']) + "\n" + content
+                    if role != processed_history[-1]['role']: processed_history.append(msg_obj)
+                    else: processed_history[-1]['content'] = str(processed_history[-1]['content']) + "\n" + content
             
-            messages.extend(processed_history)
+            # Construct messages for the model
+            messages = []
+            if processed_history:
+                # Prepend conversation_context to the first message if it's from the user
+                if processed_history[0]['role'] == 'user':
+                    if isinstance(processed_history[0]['content'], list):
+                        # Multi-modal content
+                        processed_history[0]['content'][0]['text'] = conversation_context + "\n\n" + processed_history[0]['content'][0]['text']
+                    else:
+                        # Simple text content
+                        processed_history[0]['content'] = conversation_context + "\n\n" + processed_history[0]['content']
+                    messages = processed_history
+                else:
+                    # If history starts with assistant (unlikely), prepend a system/user prompt anyway
+                    messages = [{"role": "user", "content": conversation_context}] + processed_history
+            else:
+                # No history, start with user context
+                messages = [{"role": "user", "content": conversation_context}]
 
-            # Check if we need to append current question (must follow an assistant message or be the first)
-            # If the history ended with 'user', we add a dummy assistant response to allow the new user question
             if messages and messages[-1]['role'] == 'user':
                 messages.append({"role": "assistant", "content": "..."})
-            
-            # If there's a cached image, include it in the user message
-            if cached_image:
-                user_content = [
-                    {"type": "text", "text": question},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-                        }
-                    }
-                ]
-                messages.append({"role": "user", "content": user_content})
-            else:
-                messages.append({"role": "user", "content": question})
 
-            # Final check: Ensure the first message after system is 'user'
-            # If all history was skipped/empty, the current question will be the first and it's 'user'. Correct.
-            if len(messages) > 1 and messages[1]['role'] == 'assistant':
-                # This could happen if history was [assistant] and we added a dummy assistant
-                # We remove the first assistant message to start with user
-                messages.pop(1)
+            response_stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
 
-            response_stream = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                stream=True
-            )
-
-            full_answer = ""
             try:
                 for chunk in response_stream:
                     content = chunk.choices[0].delta.content
                     if content:
                         full_answer += content
-                        yield f"data: {content}\n\n"
-            except GeneratorExit:
-                # Client disconnected (e.g. refresh), but we want to continue 
-                # to process and save the message in the background.
-                print(f"DEBUG: Client disconnected for session {chat_session_id}, finishing processing in background.")
+                        if not client_disconnected:
+                            try:
+                                yield f"data: {content}\n\n"
+                            except GeneratorExit:
+                                client_disconnected = True
+                                print(f"DEBUG: Client disconnected for session {chat_session_id}, finishing in background.")
             except Exception as e:
                 print(f"Error in stream: {e}")
 
-            # Inside generate() loop, after full_answer is collected:
-            homework_results = []
-            memory_results = []
-            md_content = None
+            # --- Auto-naming Logic (Guaranteed Result) ---
+            if user_id:
+                current_name = get_session_name(user_id, chat_session_id)
+                if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
+                    new_title = ""
+                    try:
+                        print(f"DEBUG: Auto-naming session {chat_session_id} using {MODEL}...")
+                        title_prompt = f"Gib diesem Thema einen extrem kurzen Namen (2-3 Wörter): {question}\nAntworte NUR mit dem Namen."
+                        title_res = client.chat.completions.create(
+                            model=MODEL, 
+                            messages=[{"role": "user", "content": title_prompt}],
+                            max_tokens=25,
+                            temperature=0.7
+                        )
+                        raw_title = title_res.choices[0].message.content or ""
+                        new_title = re.sub(r'^(Titel|Name|Thema|Chat):\s*', '', raw_title.strip(), flags=re.IGNORECASE).strip('"').strip('.').strip()
+                    except Exception as e:
+                        print(f"DEBUG: LLM naming failed ({e}), using fallback.")
+                    
+                    # Fallback: Use first 4 words of question if LLM fails or is empty
+                    if not new_title or len(new_title) < 2:
+                        words = question.split()
+                        new_title = " ".join(words[:4]) + ("..." if len(words) > 4 else "")
+                    
+                    print(f"DEBUG: Final title for sidebar: '{new_title}'")
+                    rename_chat_session(user_id, chat_session_id, new_title)
+                    if not client_disconnected:
+                        yield f"data: SESSION_TITLE:{new_title}\n\n"
 
-            # Find all <action> blocks
+            # --- Post-processing ---
+            homework_results = []
+            md_content = None
             action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL | re.IGNORECASE)
-            
-            # Fallback to general JSON find if no tags were used (for robustness)
             if not action_blocks:
-                # Look for things that look like JSON objects and contain "type":
                 action_blocks = re.findall(r'(\{[^{}]*?"type"\s*:\s*".*?"[^{}]*?\})', full_answer, re.DOTALL)
             
             for block in action_blocks:
                 try:
-                    # Robustness: LLMs sometimes put literal newlines in JSON strings.
-                    # We try to parse it, and if it fails, we try to escape newlines.
                     try:
                         res_data = json.loads(block)
                     except json.JSONDecodeError:
-                        # Try to replace literal newlines with \n
-                        fixed_block = block.replace('\n', '\\n').replace('\r', '\\r')
-                        res_data = json.loads(fixed_block)
-
-                    if not isinstance(res_data, list):
-                        res_list = [res_data]
-                    else:
-                        res_list = res_data
-                        
+                        res_data = json.loads(block.replace('\n', '\\n').replace('\r', '\\r'))
+                    
+                    res_list = res_data if isinstance(res_data, list) else [res_data]
                     for res in res_list:
                         if not isinstance(res, dict): continue
-                        
                         if res.get('type') == 'homework_action':
-                            action = res.get('action')
-                            hw_id = res.get('id')
+                            action, hw_id = res.get('action'), res.get('id')
+                            s_name = res.get('subject_name', '').strip()
+                            s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
+                            if s_name and s_id is None:
+                                s_id = create_subject(user_id, s_name)
+                                if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
+                            iso_due_date = convert_to_iso_date(res.get('due_date'))
                             
                             if action == 'create':
-                                s_name = res.get('subject_name', '').strip()
-                                s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
-                                if s_name and s_id is None:
-                                    s_id = create_subject(user_id, s_name)
-                                    if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
-                                
-                                create_homework(user_id, res.get('title'), res.get('due_date'), res.get('notes'), s_id)
+                                create_homework(user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
                                 homework_results.append(f"'{res.get('title')}' erstellt")
                             elif action == 'update' and hw_id:
-                                s_name = res.get('subject_name', '').strip()
-                                s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
-                                if s_name and s_id is None:
-                                    s_id = create_subject(user_id, s_name)
-                                    if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
-                                
-                                update_homework(hw_id, user_id, res.get('title'), res.get('due_date'), res.get('notes'), s_id)
+                                update_homework(hw_id, user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
                                 homework_results.append(f"'{res.get('title')}' aktualisiert")
                             elif action == 'toggle' and hw_id:
                                 toggle_homework_status(hw_id, user_id)
-                                homework_results.append("Status geändert")
                             elif action == 'delete' and hw_id:
                                 delete_homework(hw_id)
-                                homework_results.append("gelöscht")
-                            elif action == 'deleteAll':
-                                delete_all_homework(user_id)
-                                homework_results.append("alle Hausaufgaben gelöscht")
                         elif res.get('type') == 'worksheet_creation':
                              md_content = res.get('content')
                         elif res.get('type') == 'memory_action':
-                            content = res.get('content')
-                            action_type = res.get('action', 'add') # Default to add for backward compatibility
-                            
+                            content, act = res.get('content'), res.get('action', 'add')
                             if content:
-                                if action_type == 'add':
-                                    if add_memory(user_id, content):
-                                        memory_results.append("Erinnerung gespeichert")
-                                    else:
-                                        memory_results.append("Erinnerung existiert bereits")
-                                elif action_type == 'delete':
-                                    if delete_memory_by_content(user_id, content):
-                                        memory_results.append("Erinnerung aktualisiert")
+                                if act == 'add': add_memory(user_id, content)
+                                elif act == 'delete': delete_memory_by_content(user_id, content)
                         elif res.get('type') == 'set_chat_subject':
                             subject = res.get('subject')
                             if subject:
                                 update_chat_session_subject(user_id, chat_session_id, subject)
-                                yield f"data: SESSION_SUBJECT:{subject}\n\n"
-                except Exception:
-                    continue
+                                current_chat_subject = subject  # Update local variable for subsequent save
+                                if not client_disconnected: yield f"data: SESSION_SUBJECT:{subject}\n\n"
+                except Exception: continue
 
-            # Clean up message for storage (remove all JSON and tags)
+            # Cleanup display text
             display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
             display_text = re.sub(r'(\{.*?\}|\[.*?\])', ' ', display_text)
             display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
-            
-            # Additional cleanup for partial/unfinished tags or JSON at the end
             display_text = re.sub(r'<action[\s\S]*$', ' ', display_text, flags=re.IGNORECASE)
             display_text = re.sub(r'\{[^{}]*$', ' ', display_text)
             
-            # Expanded filtering for redundant AI phrases
-            # We only remove them if there is other text, to avoid empty bubbles
-            redundant_phrases = [
-                r'Bitte hab einen Moment Geduld, während ich es generiere\.',
-                r'Bitte gib mir einen Moment, damit es vollständig generiert wird\.',
-                r'Ich habe das Arbeitsblatt erstellt!',
-                r'Ich habe das Arbeitsblatt vorbereitet\.',
-                r'Das Arbeitsblatt wird gerade erstellt\.'
-            ]
-            
-            # We use a temporary variable to check if filtering makes it empty
-            filtered_text = display_text
-            for phrase in redundant_phrases:
-                filtered_text = re.sub(phrase, '', filtered_text, flags=re.IGNORECASE)
-            
-            filtered_text = re.sub(r'\s+', ' ', filtered_text).strip()
-            if filtered_text:
-                display_text = filtered_text
+            redundant_phrases = [r'Bitte hab einen Moment Geduld.*', r'Bitte gib mir einen Moment.*', r'Ich habe das Arbeitsblatt erstellt!', r'Das Arbeitsblatt wird gerade erstellt\.']
+            for phrase in redundant_phrases: display_text = re.sub(phrase, '', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\s+', ' ', display_text).strip()
 
-            # Save the message text IMMEDIATELY so it's persisted on reload
             assistant_msg_id = None
             if display_text or md_content:
                 initial_ws = 'PENDING' if md_content else None
-                assistant_msg_id = save_chat_message(user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
+                # Use db_user_id (which is 0 for guests)
+                assistant_msg_id = save_chat_message(db_user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
 
             pdf_basename = None
             if md_content:
-                # Set session flag that generation is in progress (only if request context is active)
-                has_context = False
-                try:
-                    session['generating_worksheet'] = True
-                    has_context = True
-                except RuntimeError:
-                    pass
-
+                has_context = has_request_context()
                 if has_context:
-                    yield "data: START_WORKSHEET_GENERATION\n\n"
+                    if not client_disconnected: yield "data: START_WORKSHEET_GENERATION\n\n"
                 
                 worksheet_uuid = str(uuid.uuid4())
-                md_filename = f"sheets/{worksheet_uuid}.md"
-                pdf_filename = f"sheets/{worksheet_uuid}.pdf"
-
-                with open(md_filename, "w", encoding='utf-8') as f:
-                    f.write(md_content.strip())
+                md_filename, pdf_filename = f"sheets/{worksheet_uuid}.md", f"sheets/{worksheet_uuid}.pdf"
+                with open(md_filename, "w", encoding='utf-8') as f: f.write(md_content.strip())
                 
-                # Convert MD to PDF using the external service
                 try:
-                    response = requests.post(
-                        'https://api.md-to-pdf.l-ai.pro',
-                        data={'markdown': md_content.strip()},
-                        timeout=30
-                    )
+                    response = requests.post('https://api.md-to-pdf.l-ai.pro', data={'markdown': md_content.strip()}, timeout=30)
                     response.raise_for_status()
-                    with open(pdf_filename, 'wb') as f:
-                        f.write(response.content)
+                    with open(pdf_filename, 'wb') as f: f.write(response.content)
                     pdf_basename = os.path.basename(pdf_filename)
                 except Exception as e:
                     print(f"PDF generation failed: {e}")
-                    if has_context:
-                        yield "data: Fehler bei der PDF-Erstellung. Lade die Markdown-Version herunter.\n\n"
-                    if os.path.exists(md_filename):
-                        pdf_basename = os.path.basename(md_filename)
+                    if has_context and not client_disconnected: yield "data: Fehler bei der PDF-Erstellung.\n\n"
+                    if os.path.exists(md_filename): pdf_basename = os.path.basename(md_filename)
 
-            # Update the message with the worksheet filename if we have one
             if assistant_msg_id and pdf_basename:
                 update_chat_message_worksheet(assistant_msg_id, pdf_basename)
             
-            # Clear generation flag (safely)
-            try:
-                session.pop('generating_worksheet', None)
-            except RuntimeError:
-                pass
+            if has_request_context():
+                try: session.pop('generating_worksheet', None)
+                except RuntimeError: pass
             
-            # Send final signals if context is still there
-            try:
-                if homework_results:
-                    yield "data: HOMEWORK_UPDATED\n\n"
-                if pdf_basename:
-                    yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
-            except:
-                pass
-            
-            # Auto-naming: Only if this is the start of the conversation
-            if len(chat_history) <= 2: 
-                try:
-                    # Use a very simple, direct prompt to summarize the USER'S question
-                    title_messages = [
-                        {"role": "system", "content": "Du bist ein hilfreicher Assistent, der Chat-Titel erstellt. Antworte NUR mit dem Titel (1-4 Schlagworte), kein Punkt am Ende."},
-                        {"role": "user", "content": f"Fasse diese Benutzeranfrage kurz zusammen: {question}"}
-                    ]
-                    
-                    title_response = client.chat.completions.create(
-                        model=MODEL,
-                        messages=title_messages,
-                        max_tokens=20
-                    )
-                    new_title = title_response.choices[0].message.content.strip().strip('"').strip('.')
-                    if new_title:
-                        rename_chat_session(user_id, chat_session_id, new_title)
-                        yield f"data: SESSION_TITLE:{new_title}\n\n"
-                except Exception as e:
-                    print(f"Auto-naming failed: {e}")
+            if not client_disconnected:
+                if homework_results: yield "data: HOMEWORK_UPDATED\n\n"
+                if pdf_basename: yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error communicating with API: {e}")
-            error_message = "Entschuldigung, es gab ein Problem mit der Verbindung. Bitte stellen Sie sicher, dass der Dienst erreichbar ist."
-            save_chat_message(user_id, chat_session_id, 'assistant', error_message)
-            yield f"data: {error_message}\n\n"
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
-            error_message = f"Ein unerwarteter Fehler ist aufgetreten: {str(e)}"
-            save_chat_message(user_id, chat_session_id, 'assistant', error_message)
-            yield f"data: {error_message}\n\n"
+            if not client_disconnected: yield f"data: Ein unerwarteter Fehler ist aufgetreten: {str(e)}\n\n"
+        finally:
+            generating_sessions.pop(chat_session_id, None)
 
     return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/api/check-chat-status')
+def check_chat_status():
+    session_id = request.args.get('session_id')
+    if not session_id:
+        session_id = session.get('chat_session_id')
+    
+    is_generating = generating_sessions.get(session_id, False)
+    return jsonify({'generating': is_generating})
+
+@app.route('/get-user-chat-sessions')
+def get_user_chat_sessions_route():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+    
+    user_id = session['user_id']
+    sessions = get_user_chat_sessions(user_id)
+    return jsonify(sessions)
 
 @app.route('/load-chat/<session_id>', methods=['POST'])
 def load_chat(session_id):
@@ -663,10 +602,7 @@ def load_chat(session_id):
 
 @app.route('/get-chat-history', methods=['GET'])
 def get_current_chat_history():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Nicht angemeldet'}), 401
-
-    user_id = session['user_id']
+    user_id = session.get('user_id', 0)
     chat_session_id = session.get('chat_session_id')
 
     if not chat_session_id:
@@ -677,11 +613,12 @@ def get_current_chat_history():
 
 @app.route('/api/check-worksheet-status')
 def check_worksheet_status():
-    if 'user_id' not in session or 'chat_session_id' not in session:
+    user_id = session.get('user_id', 0)
+    chat_session_id = session.get('chat_session_id')
+    
+    if not chat_session_id:
         return jsonify({'generating': False})
     
-    user_id = session['user_id']
-    chat_session_id = session['chat_session_id']
     history = get_chat_history(user_id, chat_session_id)
     is_generating = any(msg.get('worksheet_filename') == 'PENDING' for msg in history)
     
@@ -759,10 +696,8 @@ def preview_worksheet(filename):
 
 @app.route('/')
 def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    user_type = session.get('user_type')
+    user_id = session.get('user_id')
+    user_type = session.get('user_type', 'student') if user_id else 'guest'
 
     if user_type == 'it-admin':
         return redirect(url_for('admin_dashboard'))
@@ -770,30 +705,28 @@ def index():
     # Create new chat session if not exists
     if 'chat_session_id' not in session:
         session['chat_session_id'] = str(uuid.uuid4())
-
-    user_id = session['user_id']
     
-    # Cleanup old completed homework (24h)
-    delete_old_completed_homework(user_id)
+    # Cleanup old completed homework (24h) if logged in
+    if user_id:
+        delete_old_completed_homework(user_id)
 
-    # Get user's chat sessions
-    user_sessions = get_user_chat_sessions(user_id)
+    # Get user's chat sessions (user_id=0 for guests)
+    db_user_id = user_id if user_id else 0
+    user_sessions = get_user_chat_sessions(db_user_id)
 
     # Get assignments
     assignments = []
     class_name = session.get('class_name')
-    if class_name:
-        if user_type == 'teacher':
-            assignments = get_assignments_for_class(class_name, session.get('school'))
-        elif user_type == 'student':
-            assignments = get_assignments_for_class(class_name, session.get('school'))
+    if user_id and class_name:
+        assignments = get_assignments_for_class(class_name, session.get('school'))
 
     # Get homework
-    homework = get_homework_for_user(session['user_id'])
+    homework = get_homework_for_user(user_id) if user_id else []
 
     return render_template('index.html',
                          user_type=user_type,
-                         username=session.get('username'),
+                         is_guest=not user_id,
+                         username=session.get('username', 'Gast'),
                          class_name=class_name,
                          chat_sessions=user_sessions,
                          current_session_id=session.get('chat_session_id'),
@@ -991,7 +924,8 @@ def toggle_homework_route(homework_id):
     return jsonify({'success': True})
 
 @app.route('/delete-homework/<homework_id>', methods=['POST'])
-def delete_homework_route(homework_id):
+def toggle_homework_status_route(homework_id):
+    # This was a duplicate or misnamed route in previous version, fixing to delete
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
     
@@ -1113,3 +1047,6 @@ def set_math_solver_route():
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Speichern'}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)

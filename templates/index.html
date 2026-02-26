@@ -117,13 +117,13 @@
     <input type="hidden" id="user-type" value="{{ user_type }}">
 
     <!-- Mobile Overlay -->
-    <div id="mobile-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden"></div>
+    <div id="mobile-overlay" class="fixed top-16 right-0 bottom-0 left-0 bg-black bg-opacity-40 z-30 hidden"></div>
 
     <div class="flex flex-col h-screen overflow-hidden">
         <!-- Header -->
-        <header class="bg-white shadow-lg px-4 py-3 flex items-center justify-between relative z-50">
+        <header class="bg-white shadow-lg px-2 sm:px-4 h-16 flex items-center justify-between relative z-50">
             <!-- Left: Sidebar Menu -->
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 sm:space-x-3">
                 <button id="sidebar-menu-btn" class="flex flex-col justify-center items-center w-8 h-8 space-y-1 hover:scale-110 transition-transform duration-300">
                     <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                     <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
@@ -135,24 +135,29 @@
             </div>
 
             <!-- Center: Logo -->
-            <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center">
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                     <span class="material-symbols-outlined text-white text-lg">neurology</span>
                 </div>
                 <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
                     Intelligenter Lernassistent
                 </h1>
-                <h1 class="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent sm:hidden">
-                    KI Assistant
-                </h1>
             </div>
 
             <!-- Right: Actions -->
-            <div class="flex items-center space-x-2">
-                <!-- Logout Button -->
+            <div class="flex items-center space-x-1 sm:space-x-2">
+                {% if is_guest %}
+                <a href="/login" class="flex items-center justify-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-300" title="Anmelden">
+                    <span class="text-xs sm:text-sm font-bold">Anmelden</span>
+                </a>
+                <a href="/register" class="flex items-center justify-center px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors duration-300" title="Registrieren">
+                    <span class="text-xs sm:text-sm font-bold">Registrieren</span>
+                </a>
+                {% else %}
                 <a href="/logout" class="flex items-center justify-center w-10 h-10 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
                     <span class="material-symbols-outlined text-lg">logout</span>
                 </a>
+                {% endif %}
             </div>
         </header>
 
@@ -161,7 +166,7 @@
             <!-- Unified Sidebar -->
             <aside id="sidebar" class="w-3/4 md:w-80 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 ease-in-out fixed top-16 bottom-0 left-0 z-40 flex flex-col">
                 <!-- Sidebar Header -->
-                <div class="p-4 border-b border-gray-200">
+                <div class="p-4 border-b border-gray-200 flex items-center justify-between">
                     <div class="overflow-x-auto no-scrollbar">
                         <div class="flex items-center space-x-2 min-w-max pb-1">
                             <button id="chats-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700">Chats</button>
@@ -169,13 +174,35 @@
                             <button id="homework-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100">Hausaufgaben</button>
                         </div>
                     </div>
+                    <button id="close-sidebar-btn" class="md:hidden ml-2 p-1 text-gray-500 hover:bg-gray-100 rounded-lg">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
                 </div>
 
                 <!-- Sidebar Content -->
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
-                    <!-- Chat Subject Filter -->
-                    <div id="chat-subject-filter-container" class="mb-3 px-2 hidden">
-                        <label for="chat-subject-filter" class="block text-xs font-medium text-gray-700 mb-1">Filter nach Thema:</label>
+                    {% if is_guest %}
+                    <div class="bg-purple-50 border border-purple-100 rounded-xl p-4 m-2 mb-4 shadow-sm">
+                        <p class="text-xs text-purple-800 font-bold mb-2 flex items-center">
+                            <span class="material-symbols-outlined text-[16px] mr-1">info</span>
+                            Funktionen freischalten:
+                        </p>
+                        <ul class="text-[11px] text-purple-600 space-y-1.5 mb-3">
+                            <li class="flex items-center"><span class="material-symbols-outlined text-[14px] mr-1 text-purple-400">history</span> Chats dauerhaft speichern</li>
+                            <li class="flex items-center"><span class="material-symbols-outlined text-[14px] mr-1 text-purple-400">assignment</span> Aufgaben von Lehrern erhalten</li>
+                            <li class="flex items-center"><span class="material-symbols-outlined text-[14px] mr-1 text-purple-400">task_alt</span> Hausaufgaben verwalten</li>
+                        </ul>
+                        <div class="grid grid-cols-2 gap-2">
+                            <a href="/login" class="text-center bg-purple-600 text-white text-[11px] font-bold py-2 rounded-lg hover:bg-purple-700 transition-colors shadow-sm">Anmelden</a>
+                            <a href="/register" class="text-center bg-indigo-500 text-white text-[11px] font-bold py-2 rounded-lg hover:bg-indigo-600 transition-colors shadow-sm">Registrieren</a>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div>
+                        <!-- Chat Subject Filter -->
+                        <div id="chat-subject-filter-container" class="mb-3 px-2">
+                        <label for="chat-subject-filter" class="block text-xs font-medium text-gray-700 mb-1">Filter nach Fach:</label>
                         <select id="chat-subject-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md">
                             <option value="all">Alle Chats</option>
                             <!-- Options will be dynamically loaded here -->
@@ -192,7 +219,7 @@
                                 <div class="flex flex-col space-y-1 pointer-events-none">
                                     <span class="session-title text-sm font-medium text-gray-800 truncate">{{ session.session_name }}</span>
                                     {% if session.chat_subject %}
-                                        <span class="session-subject text-xs text-gray-600 truncate">Thema: {{ session.chat_subject }}</span>
+                                        <span class="session-subject text-xs text-gray-600 truncate">Fach: {{ session.chat_subject }}</span>
                                     {% endif %}
                                     <span class="session-date text-xs text-gray-500">{{ session.last_message[:16] }}</span>
                                 </div>
@@ -249,7 +276,7 @@
                                                 </span>
                                             {% endif %}
                                         </div>
-                                        <span class="homework-date text-xs text-gray-500">Fällig am: {{ hw.due_date }}</span>
+                                        <span class="homework-date text-xs text-gray-500">Fällig am: {{ hw.due_date|german_date }}</span>
                                     </div>
                                     <button class="toggle-homework-btn p-1 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0" title="{% if hw.completed %}Als offen markieren{% else %}Erledigt{% endif %}">
                                         <span class="material-symbols-outlined text-lg {% if hw.completed %}text-green-600{% else %}text-gray-400{% endif %}">
@@ -262,9 +289,11 @@
                             <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Hausaufgaben verfügbar.</p>
                         {% endfor %}
                     </div>
+                    </div>
                 </div>
 
                 <!-- User Profile / Bottom Section -->
+                {% if not is_guest %}
                 <div class="mt-auto p-4 border-t border-gray-200 bg-gray-50">
                     <div class="flex items-center space-x-3 mb-3">
                         <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">
@@ -289,10 +318,11 @@
                         <span class="text-sm font-medium">Einstellungen</span>
                     </button>
                 </div>
+                {% endif %}
             </aside>
 
             <!-- Main Chat Container -->
-            <main id="main-content" class="flex-1 flex flex-col bg-white md:bg-transparent transition-all duration-300 ease-in-out">
+            <main id="main-content" class="flex-1 flex flex-col bg-transparent transition-all duration-300 ease-in-out">
                 <!-- Chat Messages -->
                 <div id="chat-view" class="flex-1 flex flex-col h-full overflow-hidden">
                     <div class="flex-1 overflow-hidden">
