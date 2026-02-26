@@ -98,7 +98,8 @@
                             {% endif %}
                             <span class="text-gray-600 text-sm flex items-center">
                                 <span class="material-symbols-outlined text-sm mr-1">event</span>
-                                Fällig am {{ homework.due_date }}
+                                                                 Fällig am {{ homework.due_date|german_date }}
+                                
                             </span>
                         </div>
                     </div>

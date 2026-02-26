@@ -328,15 +328,21 @@ def get_all_users():
 
     return [{'id': u[0], 'username': u[1], 'password': u[2], 'user_type': u[3], 'created_at': u[4]} for u in users]
 
-def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None, chat_subject=None):
+def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None, chat_subject=None, session_name=None):
     """Save a chat message to the database"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
+    # If session_name is not provided, try to get the existing one for this session
+    if session_name is None:
+        cursor.execute('SELECT session_name FROM chat_history WHERE session_id = ? AND session_name IS NOT NULL LIMIT 1', (session_id,))
+        row = cursor.fetchone()
+        session_name = row[0] if row else None
+
     cursor.execute('''
-        INSERT INTO chat_history (user_id, session_id, message_type, content, image_data, worksheet_filename, chat_subject)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, session_id, message_type, content, image_data, worksheet_filename, chat_subject))
+        INSERT INTO chat_history (user_id, session_id, session_name, message_type, content, image_data, worksheet_filename, chat_subject)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, session_id, session_name, message_type, content, image_data, worksheet_filename, chat_subject))
     
     last_id = cursor.lastrowid
     conn.commit()
@@ -466,6 +472,15 @@ def rename_chat_session(user_id, session_id, new_name):
         return False
     finally:
         conn.close()
+
+def get_session_name(user_id, session_id):
+    """Get the name of a specific session"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT session_name FROM chat_history WHERE user_id = ? AND session_id = ? LIMIT 1', (user_id, session_id))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 def update_chat_session_subject(user_id, session_id, subject):
     """Update the subject for all chat messages in a given session"""

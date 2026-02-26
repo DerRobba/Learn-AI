@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
+    const userTypeEl = document.getElementById('user-type');
+    const userType = userTypeEl ? userTypeEl.value : '';
+    const isGuest = !userType || userType === 'None' || userType === '';
+
     const recordButton = document.getElementById('record-button');
     const chatHistory = document.getElementById('chat-history');
     const imageUploadButton = document.getElementById('image-upload-button');
@@ -42,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.getElementById('main-content');
     const sidebarMenuBtn = document.getElementById('sidebar-menu-btn');
+    const closeSidebarBtn = document.getElementById('close-sidebar-btn');
     const mobileOverlay = document.getElementById('mobile-overlay');
 
     // Sidebar Tabs
@@ -61,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
             sidebar.classList.add('-translate-x-full');
             sidebarMenuBtn.classList.remove('active');
             mobileOverlay.classList.add('hidden');
+            document.body.style.overflow = ''; // Enable scrolling
             if (mainContent) {
                 mainContent.style.marginLeft = '0';
             }
@@ -71,6 +77,7 @@ document.addEventListener('DOMContentLoaded', function() {
             sidebarMenuBtn.classList.add('active');
             if (window.innerWidth < 768) {
                 mobileOverlay.classList.remove('hidden');
+                document.body.style.overflow = 'hidden'; // Prevent scrolling background
             } else {
                 if (mainContent) {
                     mainContent.style.marginLeft = '20rem'; // w-80
@@ -84,6 +91,10 @@ document.addEventListener('DOMContentLoaded', function() {
             e.stopPropagation();
             toggleSidebar();
         });
+    }
+
+    if (closeSidebarBtn) {
+        closeSidebarBtn.addEventListener('click', toggleSidebar);
     }
 
     if (mobileOverlay) {
@@ -130,6 +141,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (assignmentsTabBtn) {
         assignmentsTabBtn.addEventListener('click', () => {
+            if (isGuest) {
+                window.location.href = '/login';
+                return;
+            }
             assignmentsTabBtn.classList.add('bg-purple-100', 'text-purple-700');
             assignmentsTabBtn.classList.remove('text-gray-500', 'hover:bg-gray-100');
 
@@ -148,6 +163,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (homeworkTabBtn) {
         homeworkTabBtn.addEventListener('click', () => {
+            if (isGuest) {
+                window.location.href = '/login';
+                return;
+            }
             homeworkTabBtn.classList.add('bg-purple-100', 'text-purple-700');
             homeworkTabBtn.classList.remove('text-gray-500', 'hover:bg-gray-100');
 
@@ -251,39 +270,44 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Ermittle Dateiendung
                 const dateiendung = worksheet_filename.split('.').pop().toLowerCase();
                 
-                // Container für Arbeitsblatt-Vorschau
-                const arbeitsblattContainer = document.createElement('div');
-                arbeitsblattContainer.className = 'mt-3 border border-purple-200 rounded-lg overflow-hidden bg-white';
+                // Container für Arbeitsblatt-Aktionen
+                const actionContainer = document.createElement('div');
+                actionContainer.className = 'mt-3 space-y-2';
                 
-                // Für PDF: Inline-Vorschau mit iframe
-                if (dateiendung === 'pdf') {
-                    arbeitsblattContainer.innerHTML = `
-                        <iframe src="/preview-worksheet/${worksheet_filename}" 
-                                style="width: 100%; height: 500px; border: none;"></iframe>
-                    `;
-                } 
-                // Für Markdown: Inline-Vorschau
-                else if (dateiendung === 'md') {
-                    arbeitsblattContainer.innerHTML = `
-                        <iframe src="/preview-worksheet/${worksheet_filename}" 
-                                style="width: 100%; height: 500px; border: none; background: white;"></iframe>
-                    `;
-                }
+                const buttonsWrapper = document.createElement('div');
+                buttonsWrapper.className = 'flex flex-wrap gap-2';
                 
-                // Download-Button unter Vorschau
-                const downloadButtonContainer = document.createElement('div');
-                downloadButtonContainer.className = 'p-3 bg-gray-50 border-t border-purple-200 flex items-center justify-between';
-                downloadButtonContainer.innerHTML = `
-                    <span class="text-sm text-gray-600">Arbeitsblatt-Vorschau</span>
-                    <a href="/download-worksheet/${worksheet_filename}" 
-                       class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors">
-                        <span class="material-symbols-outlined text-sm mr-1">download</span>
-                        Herunterladen
-                    </a>
-                `;
+                const previewBtn = document.createElement('button');
+                previewBtn.className = 'inline-flex items-center px-3 py-1.5 border border-purple-200 text-xs font-medium rounded-md shadow-sm text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors';
+                previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility</span> Vorschau anzeigen';
                 
-                arbeitsblattContainer.appendChild(downloadButtonContainer);
-                botMessageElement.querySelector('.flex-1').appendChild(arbeitsblattContainer);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = `/download-worksheet/${worksheet_filename}`;
+                downloadLink.className = 'inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors';
+                downloadLink.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Herunterladen';
+                
+                buttonsWrapper.appendChild(previewBtn);
+                buttonsWrapper.appendChild(downloadLink);
+                actionContainer.appendChild(buttonsWrapper);
+                
+                const previewWrapper = document.createElement('div');
+                previewWrapper.className = 'hidden mt-2 border border-purple-200 rounded-lg overflow-hidden bg-white';
+                actionContainer.appendChild(previewWrapper);
+                
+                previewBtn.onclick = () => {
+                    if (previewWrapper.classList.contains('hidden')) {
+                        previewWrapper.classList.remove('hidden');
+                        previewWrapper.innerHTML = `<iframe src="/preview-worksheet/${worksheet_filename}" style="width: 100%; height: 500px; border: none; background: white;"></iframe>`;
+                        previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility_off</span> Vorschau ausblenden';
+                    } else {
+                        previewWrapper.classList.add('hidden');
+                        previewWrapper.innerHTML = '';
+                        previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility</span> Vorschau anzeigen';
+                    }
+                    scrollToBottom();
+                };
+                
+                botMessageElement.querySelector('.flex-1').appendChild(actionContainer);
             } else if (trimmedContent.startsWith("SESSION_TITLE:")) {
                 const newTitle = trimmedContent.substring("SESSION_TITLE:".length);
                 const activeSession = document.querySelector('.chat-session.bg-purple-100');
@@ -291,8 +315,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     const titleEl = activeSession.querySelector('.session-title');
                     if (titleEl) animateTitleUpdate(titleEl, newTitle);
                 }
+                // Always reload the full session list to ensure sync
+                setTimeout(loadAllChatSessionsAndRender, 500);
             } else if (trimmedContent.startsWith("SESSION_SUBJECT:")) {
-                const neuesThema = trimmedContent.substring("SESSION_SUBJECT:".length);
+                const neuesFach = trimmedContent.substring("SESSION_SUBJECT:".length);
                 const activChat = document.querySelector('.chat-session.bg-purple-100');
                 if (activChat) {
                     // Update or create the subject element
@@ -302,25 +328,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         subjectEl.className = 'session-subject text-xs text-gray-600 truncate';
                         activChat.querySelector('.flex-col').appendChild(subjectEl);
                     }
-                    subjectEl.textContent = `Thema: ${neuesThema}`;
-                    activChat.dataset.chatSubject = neuesThema;
+                    subjectEl.textContent = `Fach: ${neuesFach}`;
+                    activChat.dataset.chatSubject = neuesFach;
                 }
-                // Aktualisiere auch die Thema-Filter-Optionen
+                // Aktualisiere auch die Fach-Filter-Optionen und die Session-Liste
                 loadChatSubjects();
+                loadAllChatSessionsAndRender();
             } else if (trimmedContent === "START_WORKSHEET_GENERATION") {
                 console.log("Arbeitsblatt-Generierung gestartet...");
                 showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
             } else if (trimmedContent === "HOMEWORK_UPDATED") {
                 // Reload or update specific UI part
                 setTimeout(() => location.reload(), 1500);
-            } else if (trimmedContent.toLowerCase().startsWith("createmd:")) {
-                // Do nothing, hide this from the user
-                showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
             } else {
                 fullAnswer += content;
 
                 // Also check if the raw stream contains worksheet markers to show animation immediately
-                if ((fullAnswer.includes('worksheet_creation') || fullAnswer.toLowerCase().includes('createmd:')) && !worksheetLoadingIndicator.val) {
+                if (fullAnswer.includes('worksheet_creation') && !worksheetLoadingIndicator.val) {
                     showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
                 }
 
@@ -335,9 +359,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Also remove raw JSON objects/arrays and replace with space
                 displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, ' ');
                 displayHTML = displayHTML.replace(/[\{\[]\s*$/g, ' '); 
-
-                // Remove worksheet command
-                displayHTML = displayHTML.replace(/createmd:[\s\S]*$/gi, '');
 
                 // Final cleanup for stray tag fragments
                 displayHTML = displayHTML.replace(/<\/action\/?>/gi, ' ');
@@ -481,18 +502,18 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 imageUrl = URL.createObjectURL(image); // It's a File object from upload
             }
-            imageHTML = `<img src="${imageUrl}" class="mt-2 rounded-lg max-w-xs">`;
+            imageHTML = `<img src="${imageUrl}" class="mt-2 rounded-lg max-w-full h-auto shadow-sm">`;
         }
 
         messageElement.innerHTML = `
-            <div class="flex flex-col items-end max-w-xs md:max-w-md">
-                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm">
+            <div class="flex flex-col items-end max-w-[80%] md:max-w-md">
+                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm shadow-md">
                     ${imageHTML}
-                    <p class="text-sm">${message}</p>
+                    <p class="text-sm leading-relaxed">${message}</p>
                 </div>
                 <span class="text-xs text-gray-500 mt-1">Du • ${formatTime(time)}</span>
             </div>
-            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
                 <span class="material-symbols-outlined text-white text-sm">person</span>
             </div>
         `;
@@ -527,13 +548,45 @@ document.addEventListener('DOMContentLoaded', function() {
             showWorksheetLoading(messageElement.querySelector('.flex-1'), indicatorRef);
         } else if (worksheet_filename) {
             // Clean filename just in case
-            worksheet_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
+            const clean_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
 
-            const downloadButton = document.createElement('a');
-            downloadButton.href = `/download-worksheet/${worksheet_filename}`;
-            downloadButton.className = 'mt-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
-            downloadButton.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Arbeitsblatt herunterladen';
-            messageElement.querySelector('.flex-1').appendChild(downloadButton);
+            const actionContainer = document.createElement('div');
+            actionContainer.className = 'mt-3 space-y-2';
+            
+            const buttonsWrapper = document.createElement('div');
+            buttonsWrapper.className = 'flex flex-wrap gap-2';
+            
+            const previewBtn = document.createElement('button');
+            previewBtn.className = 'inline-flex items-center px-3 py-1.5 border border-purple-200 text-xs font-medium rounded-md shadow-sm text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors';
+            previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility</span> Vorschau anzeigen';
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = `/download-worksheet/${clean_filename}`;
+            downloadLink.className = 'inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors';
+            downloadLink.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">download</span> Herunterladen';
+            
+            buttonsWrapper.appendChild(previewBtn);
+            buttonsWrapper.appendChild(downloadLink);
+            actionContainer.appendChild(buttonsWrapper);
+            
+            const previewWrapper = document.createElement('div');
+            previewWrapper.className = 'hidden mt-2 border border-purple-200 rounded-lg overflow-hidden bg-white';
+            actionContainer.appendChild(previewWrapper);
+            
+            previewBtn.onclick = () => {
+                if (previewWrapper.classList.contains('hidden')) {
+                    previewWrapper.classList.remove('hidden');
+                    previewWrapper.innerHTML = `<iframe src="/preview-worksheet/${clean_filename}" style="width: 100%; height: 500px; border: none; background: white;"></iframe>`;
+                    previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility_off</span> Vorschau ausblenden';
+                } else {
+                    previewWrapper.classList.add('hidden');
+                    previewWrapper.innerHTML = '';
+                    previewBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">visibility</span> Vorschau anzeigen';
+                }
+                scrollToBottom();
+            };
+            
+            messageElement.querySelector('.flex-1').appendChild(actionContainer);
         }
 
         setTimeout(scrollToBottom, 100);
@@ -633,10 +686,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Global variable to store all chat sessions
     let allChatSessions = [];
+    let currentSessionId = null;
 
-    // Get the current session ID from the element in the DOM (set by Flask)
-    // This value is initially rendered by Flask and available in the DOM
-    const currentSessionId = document.querySelector('.chat-session.bg-purple-100')?.dataset.sessionId;
+    // Helper to get session ID from DOM
+    function updateCurrentSessionIdFromDOM() {
+        const activeSession = document.querySelector('.chat-session.bg-purple-100');
+        if (activeSession) {
+            currentSessionId = activeSession.dataset.sessionId;
+        }
+    }
+    
+    // Initial update
+    updateCurrentSessionIdFromDOM();
 
     function renderChatSessions(sessionsToRender) {
         if (!chatSessionsContainer) return;
@@ -658,7 +719,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             let subjectHtml = '';
             if (session.chat_subject) {
-                subjectHtml = `<span class="session-subject text-xs text-gray-600 truncate">Thema: ${session.chat_subject}</span>`;
+                subjectHtml = `<span class="session-subject text-xs text-gray-600 truncate">Fach: ${session.chat_subject}</span>`;
             }
 
             sessionElement.innerHTML = `
@@ -670,6 +731,9 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             chatSessionsContainer.appendChild(sessionElement);
         });
+        
+        // After rendering, ensure our currentSessionId is still correct
+        updateCurrentSessionIdFromDOM();
     }
 
     function loadChatSubjects() {
@@ -678,6 +742,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('/api/chat-subjects')
             .then(response => response.json())
             .then(subjects => {
+                const currentVal = chatSubjectFilter.value;
                 // Clear existing options except "Alle Chats"
                 chatSubjectFilter.innerHTML = '<option value="all">Alle Chats</option>';
                 subjects.forEach(subject => {
@@ -686,6 +751,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     option.textContent = subject;
                     chatSubjectFilter.appendChild(option);
                 });
+                // Restore selection if still valid
+                if (currentVal && Array.from(chatSubjectFilter.options).some(o => o.value === currentVal)) {
+                    chatSubjectFilter.value = currentVal;
+                }
             })
             .catch(error => {
                 console.error('Error loading chat subjects:', error);
@@ -693,6 +762,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function filterChatSessions() {
+        if (!chatSubjectFilter) return;
         const selectedSubject = chatSubjectFilter.value;
         if (selectedSubject === 'all') {
             renderChatSessions(allChatSessions);
@@ -712,12 +782,61 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(sessions => {
             allChatSessions = sessions; // Store all sessions
-            renderChatSessions(allChatSessions); // Render initially unfiltered
+            filterChatSessions(); // Apply current filter
             loadChatSubjects(); // Populate filter dropdown
         })
         .catch(error => {
             console.error('Error loading all chat sessions:', error);
         });
+    }
+
+    function checkChatStatus(sessionId = null) {
+        const url = sessionId ? `/api/check-chat-status?session_id=${sessionId}` : '/api/check-chat-status';
+        fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            // Only show indicator if the chat being checked is the one currently visible
+            const isCurrentSession = !sessionId || sessionId === currentSessionId;
+            
+            if (data.generating) {
+                if (isCurrentSession && !document.querySelector('.thinking-indicator')) {
+                    const thinkingIndicator = document.createElement('div');
+                    thinkingIndicator.className = 'flex space-x-3 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl thinking-indicator';
+                    thinkingIndicator.innerHTML = `
+                        <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-white text-lg">adb</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
+                                <span class="text-xs text-gray-500">${formatTime(new Date())}</span>
+                            </div>
+                            <div class="flex space-x-1">
+                                <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
+                                <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                                <div class="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                            </div>
+                        </div>
+                    `;
+                    chatHistory.appendChild(thinkingIndicator);
+                    scrollToBottom();
+                }
+                // Poll again in 2 seconds
+                setTimeout(() => checkChatStatus(sessionId), 2000);
+            } else {
+                // Done generating
+                if (isCurrentSession) {
+                    const indicator = document.querySelector('.thinking-indicator');
+                    if (indicator) {
+                        indicator.parentNode.removeChild(indicator);
+                        // Reload history and sidebar when finished
+                        loadChatHistory();
+                        loadAllChatSessionsAndRender();
+                    }
+                }
+            }
+        })
+        .catch(error => console.error('Error checking chat status:', error));
     }
 
     function loadChatHistory() {
@@ -737,6 +856,10 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error loading chat history:', error);
+        })
+        .finally(() => {
+            // Check status on page load or manual reload
+            checkChatStatus();
         });
     }
 
@@ -745,9 +868,15 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('/new-chat', {
                 method: 'POST'
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
             .then(data => {
-                location.reload();
+                if (data) location.reload();
             })
             .catch(error => {
                 console.error('Error creating new chat:', error);
@@ -762,6 +891,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (sessionElement) {
                 const sessionId = sessionElement.dataset.sessionId;
+                currentSessionId = sessionId;
 
                 fetch(`/load-chat/${sessionId}`, {
                     method: 'POST'
@@ -769,6 +899,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.json())
                 .then(data => {
                     chatHistory.innerHTML = '';
+                    
+                    // Remove any existing thinking indicators from previous session view
+                    const oldIndicator = document.querySelector('.thinking-indicator');
+                    if (oldIndicator) oldIndicator.remove();
 
                     if (data.chat_history && data.chat_history.length > 0) {
                         data.chat_history.forEach(msg => {
@@ -806,6 +940,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (window.innerWidth < 768) {
                         toggleSidebar();
                     }
+                    
+                    // Check if this newly loaded session is generating in background
+                    checkChatStatus(sessionId);
                 })
                 .catch(error => {
                     console.error('Error loading chat session:', error);
@@ -1037,8 +1174,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let activeSessionId = null;
     let activeAssignmentId = null;
     let activeHomeworkId = null;
-
-    const userType = document.getElementById('user-type').value;
 
     if (homeworkListContainer) {
         // Toggle completion status
