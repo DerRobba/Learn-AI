@@ -1,5 +1,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     const userTypeEl = document.getElementById('user-type');
+    // keep reference to the currently open EventSource so we can close
+    // it before opening a new one. this prevents stray streams from
+    // interfering with subsequent worksheet requests.
+    let currentEventSource = null;
     const userType = userTypeEl ? userTypeEl.value : '';
     const isGuest = !userType || userType === 'None' || userType === '';
 
@@ -239,12 +243,28 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
 
+        // if a previous stream is still open, close it to avoid
+        // multiple concurrent connections to /ask for the same session.
+        if (currentEventSource) {
+            currentEventSource.close();
+            currentEventSource = null;
+        }
         const eventSource = new EventSource(`/ask?question=${encodeURIComponent(text)}`);
+        currentEventSource = eventSource;
+        // when the SSE connection terminates (either natural or due to error)
+        // clear the stored reference so that future calls won't try to close it.
+        eventSource.onerror = function(e) {
+            if (currentEventSource === eventSource) currentEventSource = null;
+        };
         let fullAnswer = '';
         let botMessageAppended = false;
         let worksheetLoadingIndicator = { val: null };
 
         eventSource.onmessage = function(event) {
+            // when the stream finishes or errors we should clear the
+            // global reference so that a future sendToServer call will not
+            // mistakenly close the wrong object.
+
             if (!botMessageAppended) {
                 if (thinkingIndicator && thinkingIndicator.parentNode) {
                     thinkingIndicator.parentNode.removeChild(thinkingIndicator);
