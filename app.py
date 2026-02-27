@@ -16,6 +16,13 @@ from database import init_database, create_user, get_user, save_chat_message, ge
 load_dotenv()
 
 # Global tracking for active generation sessions
+# track active streaming responses per chat session.  
+# we store a simple counter so that overlapping requests in the
+# same session don't clear the flag prematurely.  
+# key: chat_session_id, value: number of active generators
+# (previously this was a boolean which could get stuck and prevented
+# further worksheet requests in the same chat).
+
 generating_sessions = {}
 
 app = Flask(__name__)
@@ -268,6 +275,14 @@ def ask():
         return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
 
     chat_session_id = session.get('chat_session_id')
+    # make sure any stale "generating" flag from a previous request
+    # is cleared before we start processing a new message.  this fixes a
+    # situation where a worksheet stream hung or the client disconnected
+    # and the flag remained set, blocking subsequent worksheet
+    # creations in the same chat.
+    if chat_session_id:
+        generating_sessions.pop(chat_session_id, None)
+
     cached_image_filename = session.get('cached_image_filename')
     cached_image = None
 
@@ -321,8 +336,8 @@ def ask():
 
     def generate():
         nonlocal current_chat_subject
-        # Track that this session is generating
-        generating_sessions[chat_session_id] = True
+        # increment the counter for active generators in this session
+        generating_sessions[chat_session_id] = generating_sessions.get(chat_session_id, 0) + 1
         client_disconnected = False
         full_answer = ""
         
@@ -414,7 +429,20 @@ def ask():
             if messages and messages[-1]['role'] == 'user':
                 messages.append({"role": "assistant", "content": "..."})
 
-            response_stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
+            try:
+                response_stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
+            except Exception as api_error:
+                error_msg = str(api_error)
+                if "429" in error_msg or "rate" in error_msg.lower():
+                    yield "data: ⚠️ Die KI-API ist momentan überlastet. Bitte versuche es in einigen Sekunden erneut.\n\n"
+                    print(f"API Rate Limit: {api_error}")
+                elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                    yield "data: ❌ API-Authentifizierungsfehler. Überprüfe deinen API-Schlüssel in den Einstellungen.\n\n"
+                    print(f"API Auth Error: {api_error}")
+                else:
+                    yield f"data: ❌ Fehler bei der KI-Anfrage: {api_error}\n\n"
+                    print(f"API Error: {api_error}")
+                return
 
             try:
                 for chunk in response_stream:
@@ -550,9 +578,15 @@ def ask():
             if assistant_msg_id and pdf_basename:
                 update_chat_message_worksheet(assistant_msg_id, pdf_basename)
             
-            if has_request_context():
-                try: session.pop('generating_worksheet', None)
-                except RuntimeError: pass
+            # we used to store a per-session flag in the Flask session
+            # indicating that a worksheet was being generated. that state
+            # is no longer relied upon anywhere (we use the chat_history
+            # table and the generating_sessions counter instead), so this
+            # cleanup is effectively a no-op. leave it here only to avoid
+            # surprising errors if some old code still sets the key.
+            # if has_request_context():
+            #     try: session.pop('generating_worksheet', None)
+            #     except RuntimeError: pass
             
             if not client_disconnected:
                 if homework_results: yield "data: HOMEWORK_UPDATED\n\n"
@@ -563,7 +597,14 @@ def ask():
             traceback.print_exc()
             if not client_disconnected: yield f"data: Ein unerwarteter Fehler ist aufgetreten: {str(e)}\n\n"
         finally:
-            generating_sessions.pop(chat_session_id, None)
+            # decrement and remove entry when there are no more
+            # active streams.  using a counter prevents the case where
+            # one long-running stream clears the flag while another is
+            # still running.
+            if chat_session_id in generating_sessions:
+                generating_sessions[chat_session_id] -= 1
+                if generating_sessions[chat_session_id] <= 0:
+                    generating_sessions.pop(chat_session_id, None)
 
     return Response(generate(), mimetype='text/event-stream')
 
@@ -573,7 +614,8 @@ def check_chat_status():
     if not session_id:
         session_id = session.get('chat_session_id')
     
-    is_generating = generating_sessions.get(session_id, False)
+    # treat any positive counter as generating
+    is_generating = generating_sessions.get(session_id, 0) > 0
     return jsonify({'generating': is_generating})
 
 @app.route('/get-user-chat-sessions')
@@ -638,53 +680,74 @@ def download_sheet(filename):
 def preview_worksheet(filename):
     """Dient das Arbeitsblatt inline zur Vorschau (nicht zum Download)"""
     try:
+        import markdown as md
         # Filename validieren um Directory-Traversal zu verhindern
         filename = os.path.basename(filename)
         dateiendung = os.path.splitext(filename)[1].lower()
         
-        # Für PDF direkt servieren
+        # Für PDF direkt servieren (falls existiert)
         if dateiendung == '.pdf':
-            return send_file(os.path.join('sheets', filename), mimetype='application/pdf')
-        # Für Markdown in HTML umwandeln
+            pdf_path = os.path.join('sheets', filename)
+            if os.path.exists(pdf_path):
+                return send_file(pdf_path, mimetype='application/pdf')
+            else:
+                # Wenn PDF nicht existiert, versuche Markdown-Version zu laden
+                md_filename = filename.replace('.pdf', '.md')
+                md_path = os.path.join('sheets', md_filename)
+                if os.path.exists(md_path):
+                    with open(md_path, 'r', encoding='utf-8') as f:
+                        markdown_inhalt = f.read()
+                    html_inhalt = md.markdown(markdown_inhalt, extensions=['tables', 'fenced_code'])
+                    # Super minimales HTML für WebView
+                    html = '''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: sans-serif; margin: 0; padding: 10px; }
+h1, h2, h3 { color: #333; }
+p { margin: 10px 0; }
+code { background: #eee; padding: 2px 4px; }
+pre { background: #eee; padding: 10px; overflow: auto; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 8px; }
+</style>
+</head>
+<body>
+''' + html_inhalt + '''
+</body>
+</html>'''
+                    return Response(html, mimetype='text/html; charset=utf-8')
+                else:
+                    return abort(404)
+        # Für Markdown direkt anzeigen
         elif dateiendung == '.md':
             datei_pfad = os.path.join('sheets', filename)
             if os.path.exists(datei_pfad):
                 with open(datei_pfad, 'r', encoding='utf-8') as f:
                     markdown_inhalt = f.read()
-                
-                # JSON-Encode zum sicheren Einfügen in JavaScript
-                markdown_json = json.dumps(markdown_inhalt)
-                
-                # Einfache HTML-Seite mit Markdown anzeigen
-                html = f"""<!DOCTYPE html>
-<html lang="de">
+                html_inhalt = md.markdown(markdown_inhalt, extensions=['tables', 'fenced_code'])
+                # Super minimales HTML für WebView
+                html = '''<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arbeitsblatt Vorschau</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
-    <style>
-        body {{
-            font-family: 'Inter', sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #333;
-        }}
-        h1, h2, h3 {{ color: #6b46c1; margin-top: 20px; }}
-        code {{ background: #f3f4f6; padding: 2px 6px; border-radius: 3px; }}
-        pre {{ background: #f3f4f6; padding: 10px; border-radius: 5px; overflow-x: auto; }}
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: sans-serif; margin: 0; padding: 10px; }
+h1, h2, h3 { color: #333; }
+p { margin: 10px 0; }
+code { background: #eee; padding: 2px 4px; }
+pre { background: #eee; padding: 10px; overflow: auto; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 8px; }
+</style>
 </head>
 <body>
-    <div id="content"></div>
-    <script>
-        const markdown = {markdown_json};
-        document.getElementById('content').innerHTML = marked.parse(markdown);
-    </script>
+''' + html_inhalt + '''
 </body>
-</html>"""
+</html>'''
                 return Response(html, mimetype='text/html; charset=utf-8')
             else:
                 return abort(404)
@@ -702,8 +765,13 @@ def index():
     if user_type == 'it-admin':
         return redirect(url_for('admin_dashboard'))
 
-    # Create new chat session if not exists
-    if 'chat_session_id' not in session:
+    # Create new chat session
+    if user_id:
+        # For logged-in users, preserve session
+        if 'chat_session_id' not in session:
+            session['chat_session_id'] = str(uuid.uuid4())
+    else:
+        # For guests, always create a new session (no persistence on refresh)
         session['chat_session_id'] = str(uuid.uuid4())
     
     # Cleanup old completed homework (24h) if logged in
