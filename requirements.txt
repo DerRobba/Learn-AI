@@ -4,3 +4,4 @@ requests
 OpenAI
 flask-session
 markdown
+gunicorn
