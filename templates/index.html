@@ -374,6 +374,10 @@
                             <span class="material-symbols-outlined text-blue-600">image</span>
                             <span class="text-sm text-blue-700 font-medium">Bild im Zwischenspeicher verfügbar</span>
                         </div>
+                        <!-- AI Disclaimer -->
+                        <div class="mt-2 text-center">
+                            <p class="text-[10px] text-gray-400 font-medium">Learn-AI ist ein KI betriebener Dienst. Er kann Fehler machen.</p>
+                        </div>
                     </div>
                 </div>
 
@@ -411,6 +415,20 @@
                                 <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
                             </button>
 
+                            <!-- Link to Legal -->
+                            <button id="open-privacy-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-purple-200 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">shield</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Rechtliches</h3>
+                                        <p class="text-sm text-gray-500">Datenschutzerklärung, Impressum und Nutzungsbedingungen.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
+                            </button>
+
                             <!-- Math Solver Toggle -->
                             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between">
                                 <div class="flex items-center space-x-4">
@@ -427,6 +445,47 @@
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
+                        </div>
+
+                        <!-- Privacy Section (Hidden by default) -->
+                        <div id="privacy-section" class="hidden space-y-6">
+                            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                                <div class="space-y-4">
+                                    <div class="flex items-center space-x-3">
+                                        <button id="open-privacy-policy-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                            <span class="text-gray-700 font-medium group-hover:text-purple-600">Datenschutzerklärung</span>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center space-x-3">
+                                        <button id="open-impressum-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                            <span class="text-gray-700 font-medium group-hover:text-purple-600">Impressum</span>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center space-x-3">
+                                        <button id="open-agb-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                            <span class="text-gray-700 font-medium group-hover:text-purple-600">Nutzungsbedingungen</span>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Privacy Policy Text Section (Hidden by default) -->
+                        <div id="privacy-policy-text-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                            {% include 'legal/privacy_policy.html' %}
+                        </div>
+
+                        <!-- Impressum Section (Hidden by default) -->
+                        <div id="impressum-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                            {% include 'legal/impressum.html' %}
+                        </div>
+
+                        <!-- Nutzungsbedingungen Section (Hidden by default) -->
+                        <div id="agb-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                            {% include 'legal/agb.html' %}
                         </div>
 
                         <!-- Memories Section (Hidden by default) -->

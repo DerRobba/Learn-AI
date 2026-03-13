@@ -414,6 +414,9 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const speechSupported = !!SpeechRecognition;
+
     if (chatInput) {
         const sendButton = document.getElementById('send-button');
 
@@ -445,26 +448,82 @@ document.addEventListener('DOMContentLoaded', function() {
             this.style.height = (this.scrollHeight) + 'px';
             updateButtonVisibility();
         });
+        
+        // Initial call
+        updateButtonVisibility();
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-        console.log("Spracherkennung wird in diesem Browser nicht unterst\u00fctzt.");
-    } else if (recordButton) { // Check if recordButton exists
-        const recognition = new SpeechRecognition();
-        recognition.lang = 'de-DE';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
+    if (recordButton) { 
         let isRecording = false;
+        let recognition = null;
+
+        if (speechSupported) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'de-DE';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                updateRecordButton(true);
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    addUserMessage(transcript);
+                    sendToServer(transcript);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error', event.error);
+                if (event.error === 'not-allowed') {
+                    addBotMessage("Mikrofon-Zugriff wurde verweigert. Bitte erlaube den Zugriff in den Browser-Einstellungen.");
+                } else if (event.error === 'no-speech') {
+                    console.log("No speech detected.");
+                } else if (event.error === 'network') {
+                    addBotMessage("Netzwerkfehler bei der Spracherkennung. Bitte prüfe deine Internetverbindung.");
+                } else if (event.error !== 'aborted') {
+                    addBotMessage("Ein Fehler ist bei der Spracherkennung aufgetreten: " + event.error);
+                }
+                isRecording = false;
+                updateRecordButton(false);
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                updateRecordButton(false);
+            };
+        }
 
         // Speech Recognition Event Handlers
         recordButton.addEventListener('click', () => {
+            if (!speechSupported) {
+                addBotMessage("Spracherkennung wird in diesem Browser leider nicht unterstützt. Nutze am besten Chrome oder Edge.");
+                return;
+            }
+
             if (isRecording) {
-                recognition.stop();
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.error("Error stopping recognition:", e);
+                }
             } else {
-                recognition.start();
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.error("Error starting recognition:", e);
+                    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    if (!isSecure) {
+                        addBotMessage("Spracherkennung benötigt eine sichere HTTPS-Verbindung (oder localhost/127.0.0.1).");
+                    } else {
+                        addBotMessage("Fehler beim Starten der Spracherkennung. Bitte stelle sicher, dass Mikrofon-Zugriff gewährt ist.");
+                    }
+                    updateRecordButton(false);
+                    isRecording = false;
+                }
             }
         });
 
@@ -479,30 +538,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 recordButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
             }
         }
-        
-        recognition.onstart = () => {
-            isRecording = true;
-            updateRecordButton(true);
-        };
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-
-            // Send it directly without modifying the input field
-            if (transcript) {
-                addUserMessage(transcript);
-                sendToServer(transcript);
-            }
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error', event.error);
-        };
-
-        recognition.onend = () => {
-            isRecording = false;
-            updateRecordButton(false);
-        };
     }
 
     function formatTime(date) {
@@ -980,7 +1015,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const homeworkContextMenu = document.getElementById('homework-context-menu');
     const deleteHomeworkOption = document.getElementById('delete-homework');
 
-    // Settings & Memories Logic
     const settingsBtn = document.getElementById('settings-btn');
     const settingsView = document.getElementById('settings-view');
     const settingsHome = document.getElementById('settings-home');
@@ -993,73 +1027,96 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeSettingsBtn = document.getElementById('close-settings-btn');
     
     const openMemoriesBtn = document.getElementById('open-memories-btn');
+    const openPrivacyBtn = document.getElementById('open-privacy-btn');
+    const openPrivacyPolicyBtn = document.getElementById('open-privacy-policy-btn');
+    const privacySection = document.getElementById('privacy-section');
+    const privacyPolicyTextSection = document.getElementById('privacy-policy-text-section');
+    const impressumSection = document.getElementById('impressum-section');
+    const agbSection = document.getElementById('agb-section');
+    const openImpressumBtn = document.getElementById('open-impressum-btn');
+    const openAgbBtn = document.getElementById('open-agb-btn');
+
     const mathSolverToggle = document.getElementById('math-solver-toggle');
-    
     const memoriesList = document.getElementById('memories-list');
     const addMemoryBtn = document.getElementById('add-memory-btn');
     const newMemoryInput = document.getElementById('new-memory-input');
 
-    // Math Solver Toggle
-    if (mathSolverToggle) {
-        mathSolverToggle.addEventListener('change', (e) => {
-            const isEnabled = e.target.checked;
-            
-            fetch('/api/settings/math-solver', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: isEnabled })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.success) {
-                    alert('Fehler beim Speichern der Einstellung.');
-                    e.target.checked = !isEnabled; // Revert
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                e.target.checked = !isEnabled;
-            });
-        });
-    }
-
-    function loadSettings() {
-        // Load Math Solver status
-        fetch('/api/settings/math-solver')
-        .then(res => res.json())
-        .then(data => {
-            if (mathSolverToggle) {
-                mathSolverToggle.checked = data.enabled;
-            }
-        });
-    }
-
-    // Navigation inside Settings
-    function showSettingsHome() {
-        settingsHome.classList.remove('hidden');
+    function hideAllSettingsSections() {
+        settingsHome.classList.add('hidden');
         memoriesSection.classList.add('hidden');
+        if (privacySection) privacySection.classList.add('hidden');
+        if (privacyPolicyTextSection) privacyPolicyTextSection.classList.add('hidden');
+        if (impressumSection) impressumSection.classList.add('hidden');
+        if (agbSection) agbSection.classList.add('hidden');
+    }
+
+    function showSettingsHome() {
+        hideAllSettingsSections();
+        settingsHome.classList.remove('hidden');
         backToSettingsHomeBtn.classList.add('hidden');
         if (window.innerWidth < 768) {
             backToChatBtn.classList.remove('hidden');
         }
         settingsTitle.textContent = 'Einstellungen';
+        backToSettingsHomeBtn.onclick = null;
     }
 
     function showMemories() {
-        settingsHome.classList.add('hidden');
+        hideAllSettingsSections();
         memoriesSection.classList.remove('hidden');
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Gedächtnis';
         loadMemories();
+        backToSettingsHomeBtn.onclick = showSettingsHome;
     }
 
-    if (openMemoriesBtn) {
-        openMemoriesBtn.addEventListener('click', showMemories);
+    function showPrivacy() {
+        hideAllSettingsSections();
+        if (privacySection) privacySection.classList.remove('hidden');
+        backToSettingsHomeBtn.classList.remove('hidden');
+        backToChatBtn.classList.add('hidden');
+        settingsTitle.textContent = 'Rechtliches';
+        backToSettingsHomeBtn.onclick = showSettingsHome;
     }
+
+    function showPrivacyPolicyText() {
+        hideAllSettingsSections();
+        if (privacyPolicyTextSection) privacyPolicyTextSection.classList.remove('hidden');
+        backToSettingsHomeBtn.classList.remove('hidden');
+        backToChatBtn.classList.add('hidden');
+        settingsTitle.textContent = 'Datenschutzerklärung';
+        backToSettingsHomeBtn.onclick = showPrivacy;
+    }
+
+    function showImpressum() {
+        hideAllSettingsSections();
+        if (impressumSection) impressumSection.classList.remove('hidden');
+        backToSettingsHomeBtn.classList.remove('hidden');
+        backToChatBtn.classList.add('hidden');
+        settingsTitle.textContent = 'Impressum';
+        backToSettingsHomeBtn.onclick = showPrivacy;
+    }
+
+    function showAgb() {
+        hideAllSettingsSections();
+        if (agbSection) agbSection.classList.remove('hidden');
+        backToSettingsHomeBtn.classList.remove('hidden');
+        backToChatBtn.classList.add('hidden');
+        settingsTitle.textContent = 'Nutzungsbedingungen';
+        backToSettingsHomeBtn.onclick = showPrivacy;
+    }
+
+    if (openMemoriesBtn) openMemoriesBtn.addEventListener('click', showMemories);
+    if (openPrivacyBtn) openPrivacyBtn.addEventListener('click', showPrivacy);
+    if (openPrivacyPolicyBtn) openPrivacyPolicyBtn.addEventListener('click', showPrivacyPolicyText);
+    if (openImpressumBtn) openImpressumBtn.addEventListener('click', showImpressum);
+    if (openAgbBtn) openAgbBtn.addEventListener('click', showAgb);
 
     if (backToSettingsHomeBtn) {
-        backToSettingsHomeBtn.addEventListener('click', showSettingsHome);
+        backToSettingsHomeBtn.addEventListener('click', () => {
+            if (!backToSettingsHomeBtn.onclick) showSettingsHome();
+        });
     }
 
     function loadMemories() {
