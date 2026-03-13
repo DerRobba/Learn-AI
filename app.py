@@ -178,12 +178,13 @@ def register_post():
     user_type = request.form.get('user_type')
     school = request.form.get('school')
     agb_accept = request.form.get('agb_accept')
+    privacy_accept = request.form.get('privacy_accept')
 
     if not username or not password or not password_confirm or not user_type or not school:
         return render_template('register.html', error='Alle Felder sind erforderlich.')
 
-    if not agb_accept:
-        return render_template('register.html', error='Du musst die AGB akzeptieren.')
+    if not agb_accept or not privacy_accept:
+        return render_template('register.html', error='Du musst die Nutzungsbedingungen und die Datenschutzerklärung akzeptieren.')
 
     if password != password_confirm:
         return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
