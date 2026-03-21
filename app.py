@@ -699,81 +699,78 @@ def download_sheet(filename):
 
 @app.route('/preview-worksheet/<filename>')
 def preview_worksheet(filename):
-    """Dient das Arbeitsblatt inline zur Vorschau (nicht zum Download)"""
+    """Dient das Arbeitsblatt inline zur Vorschau (immer MD gerendert als HTML, falls verfügbar)"""
     try:
         import markdown as md
         # Filename validieren um Directory-Traversal zu verhindern
         filename = os.path.basename(filename)
-        dateiendung = os.path.splitext(filename)[1].lower()
         
-        # Für PDF direkt servieren (falls existiert)
+        # Basis-Name ohne Endung ermitteln
+        base_name = os.path.splitext(filename)[0]
+        md_filename = f"{base_name}.md"
+        md_path = os.path.join('sheets', md_filename)
+        
+        # Wenn MD-Version existiert, diese rendern und anzeigen
+        if os.path.exists(md_path):
+            with open(md_path, 'r', encoding='utf-8') as f:
+                markdown_inhalt = f.read()
+            
+            html_inhalt = md.markdown(markdown_inhalt, extensions=['tables', 'fenced_code'])
+            
+            # Stylische CSS-Klassen für ein besseres Aussehen im Preview
+            html = f'''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {{ 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+    line-height: 1.6;
+    color: #374151;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    background-color: #f9fafb;
+}}
+.preview-container {{
+    background-color: white;
+    padding: 2.5rem;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e7eb;
+}}
+h1 {{ font-size: 2.25rem; font-weight: 800; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; margin-top: 0; }}
+h2 {{ font-size: 1.5rem; font-weight: 700; color: #1f2937; margin-top: 2rem; }}
+h3 {{ font-size: 1.25rem; font-weight: 600; color: #374151; }}
+p {{ margin-bottom: 1.25rem; }}
+code {{ background-color: #f3f4f6; color: #ef4444; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.875em; }}
+pre {{ background-color: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }}
+pre code {{ background-color: transparent; color: inherit; padding: 0; }}
+table {{ width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }}
+th {{ background-color: #f3f4f6; font-weight: 600; text-align: left; }}
+th, td {{ padding: 0.75rem; border: 1px solid #e5e7eb; }}
+img {{ max-width: 100%; height: auto; border-radius: 0.5rem; }}
+hr {{ border: 0; border-top: 1px solid #e5e7eb; margin: 2rem 0; }}
+blockquote {{ border-left: 4px solid #3b82f6; padding-left: 1rem; font-style: italic; color: #4b5563; margin: 1.5rem 0; }}
+</style>
+</head>
+<body>
+    <div class="preview-container">
+        {html_inhalt}
+    </div>
+</body>
+</html>'''
+            return Response(html, mimetype='text/html; charset=utf-8')
+        
+        # Falls MD nicht existiert, aber es eine PDF ist, diese als Fallback anzeigen
+        dateiendung = os.path.splitext(filename)[1].lower()
         if dateiendung == '.pdf':
             pdf_path = os.path.join('sheets', filename)
             if os.path.exists(pdf_path):
                 return send_file(pdf_path, mimetype='application/pdf')
-            else:
-                # Wenn PDF nicht existiert, versuche Markdown-Version zu laden
-                md_filename = filename.replace('.pdf', '.md')
-                md_path = os.path.join('sheets', md_filename)
-                if os.path.exists(md_path):
-                    with open(md_path, 'r', encoding='utf-8') as f:
-                        markdown_inhalt = f.read()
-                    html_inhalt = md.markdown(markdown_inhalt, extensions=['tables', 'fenced_code'])
-                    # Super minimales HTML für WebView
-                    html = '''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body { font-family: sans-serif; margin: 0; padding: 10px; }
-h1, h2, h3 { color: #333; }
-p { margin: 10px 0; }
-code { background: #eee; padding: 2px 4px; }
-pre { background: #eee; padding: 10px; overflow: auto; }
-table { border-collapse: collapse; width: 100%; }
-td, th { border: 1px solid #ccc; padding: 8px; }
-</style>
-</head>
-<body>
-''' + html_inhalt + '''
-</body>
-</html>'''
-                    return Response(html, mimetype='text/html; charset=utf-8')
-                else:
-                    return abort(404)
-        # Für Markdown direkt anzeigen
-        elif dateiendung == '.md':
-            datei_pfad = os.path.join('sheets', filename)
-            if os.path.exists(datei_pfad):
-                with open(datei_pfad, 'r', encoding='utf-8') as f:
-                    markdown_inhalt = f.read()
-                html_inhalt = md.markdown(markdown_inhalt, extensions=['tables', 'fenced_code'])
-                # Super minimales HTML für WebView
-                html = '''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body { font-family: sans-serif; margin: 0; padding: 10px; }
-h1, h2, h3 { color: #333; }
-p { margin: 10px 0; }
-code { background: #eee; padding: 2px 4px; }
-pre { background: #eee; padding: 10px; overflow: auto; }
-table { border-collapse: collapse; width: 100%; }
-td, th { border: 1px solid #ccc; padding: 8px; }
-</style>
-</head>
-<body>
-''' + html_inhalt + '''
-</body>
-</html>'''
-                return Response(html, mimetype='text/html; charset=utf-8')
-            else:
-                return abort(404)
-        else:
-            return abort(404)
+        
+        return abort(404)
     except Exception as e:
         print(f"Fehler beim Anzeigen der Vorschau: {e}")
         return abort(404)
