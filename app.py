@@ -341,9 +341,12 @@ def ask():
         generating_sessions[chat_session_id] = generating_sessions.get(chat_session_id, 0) + 1
         client_disconnected = False
         full_answer = ""
+        md_content = None # Sofort initialisieren
+        homework_results = []
         
         try:
             now = datetime.now()
+            # ... (Rest der Kontext-Erstellung bleibt gleich) ...
             current_date_str = now.strftime("%Y-%m-%d")
             current_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][now.weekday()]
 
@@ -430,20 +433,40 @@ def ask():
             if messages and messages[-1]['role'] == 'user':
                 messages.append({"role": "assistant", "content": "..."})
 
-            try:
-                response_stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
-            except Exception as api_error:
-                error_msg = str(api_error)
-                if "429" in error_msg or "rate" in error_msg.lower():
-                    yield "data: ⚠️ Die KI-API ist momentan überlastet. Bitte versuche es in einigen Sekunden erneut.\n\n"
-                    print(f"API Rate Limit: {api_error}")
-                elif "401" in error_msg or "unauthorized" in error_msg.lower():
-                    yield "data: ❌ API-Authentifizierungsfehler. Überprüfe deinen API-Schlüssel in den Einstellungen.\n\n"
-                    print(f"API Auth Error: {api_error}")
-                else:
-                    yield f"data: ❌ Fehler bei der KI-Anfrage: {api_error}\n\n"
-                    print(f"API Error: {api_error}")
-                return
+            # --- KI ANFRAGE MIT RETRY LOGIK ---
+            max_retries = 3
+            retry_delay = 2
+            response_stream = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response_stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
+                    break  # Erfolg!
+                except Exception as api_error:
+                    error_msg = str(api_error)
+                    if ("429" in error_msg or "rate" in error_msg.lower()) and attempt < max_retries - 1:
+                        print(f"DEBUG: Rate limit hit, retrying in {retry_delay}s... (Versuch {attempt+1}/{max_retries})")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Wartezeit verdoppeln
+                        continue
+                    
+                    # Wenn alle Versuche fehlgeschlagen sind oder kein Rate-Limit-Fehler
+                    final_error = ""
+                    if "429" in error_msg or "rate" in error_msg.lower():
+                        final_error = "⚠️ Die KI-API ist momentan überlastet. Auch nach mehreren Versuchen konnte keine Verbindung hergestellt werden. Bitte warte eine Minute."
+                        print(f"API Rate Limit Final: {api_error}")
+                    elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                        final_error = "❌ API-Authentifizierungsfehler. Überprüfe deinen API-Schlüssel in den Einstellungen."
+                        print(f"API Auth Error: {api_error}")
+                    else:
+                        final_error = f"❌ Fehler bei der KI-Anfrage: {api_error}"
+                        print(f"API Error: {api_error}")
+                    
+                    # In DB speichern
+                    save_chat_message(db_user_id, chat_session_id, 'assistant', final_error, chat_subject=current_chat_subject)
+                    yield f"data: {final_error}\n\n"
+                    return
 
             try:
                 for chunk in response_stream:
@@ -458,43 +481,10 @@ def ask():
                                 print(f"DEBUG: Client disconnected for session {chat_session_id}, finishing in background.")
             except Exception as e:
                 print(f"Error in stream: {e}")
+                full_answer += f"\n\n⚠️ [FEHLER IM STREAM: {str(e)}]"
 
-            # --- Auto-naming Logic (Guaranteed Result) ---
-            if user_id:
-                current_name = get_session_name(user_id, chat_session_id)
-                if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
-                    new_title = ""
-                    try:
-                        print(f"DEBUG: Auto-naming session {chat_session_id} using {MODEL}...")
-                        title_prompt = f"Gib diesem Thema einen extrem kurzen Namen (2-3 Wörter): {question}\nAntworte NUR mit dem Namen."
-                        title_res = client.chat.completions.create(
-                            model=MODEL, 
-                            messages=[{"role": "user", "content": title_prompt}],
-                            max_tokens=25,
-                            temperature=0.7
-                        )
-                        raw_title = title_res.choices[0].message.content or ""
-                        new_title = re.sub(r'^(Titel|Name|Thema|Chat):\s*', '', raw_title.strip(), flags=re.IGNORECASE).strip('"').strip('.').strip()
-                    except Exception as e:
-                        print(f"DEBUG: LLM naming failed ({e}), using fallback.")
-                    
-                    # Fallback: Use first 4 words of question if LLM fails or is empty
-                    if not new_title or len(new_title) < 2:
-                        words = question.split()
-                        new_title = " ".join(words[:4]) + ("..." if len(words) > 4 else "")
-                    
-                    print(f"DEBUG: Final title for sidebar: '{new_title}'")
-                    rename_chat_session(user_id, chat_session_id, new_title)
-                    if not client_disconnected:
-                        yield f"data: SESSION_TITLE:{new_title}\n\n"
-
-            # --- Post-processing ---
-            homework_results = []
-            md_content = None
+            # --- POST-PROCESSING (EXTRACT ACTIONS) ---
             action_blocks = re.findall(r'<action>(.*?)</action>', full_answer, re.DOTALL | re.IGNORECASE)
-            if not action_blocks:
-                action_blocks = re.findall(r'(\{[^{}]*?"type"\s*:\s*".*?"[^{}]*?\})', full_answer, re.DOTALL)
-            
             for block in action_blocks:
                 try:
                     try:
@@ -535,7 +525,7 @@ def ask():
                             subject = res.get('subject')
                             if subject:
                                 update_chat_session_subject(user_id, chat_session_id, subject)
-                                current_chat_subject = subject  # Update local variable for subsequent save
+                                current_chat_subject = subject
                                 if not client_disconnected: yield f"data: SESSION_SUBJECT:{subject}\n\n"
                 except Exception: continue
 
@@ -548,19 +538,49 @@ def ask():
             
             redundant_phrases = [r'Bitte hab einen Moment Geduld.*', r'Bitte gib mir einen Moment.*', r'Ich habe das Arbeitsblatt erstellt!', r'Das Arbeitsblatt wird gerade erstellt\.']
             for phrase in redundant_phrases: display_text = re.sub(phrase, '', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'\s+', ' ', display_text).strip()
+            display_text = re.sub(r'\s+/g', ' ', display_text).strip()
 
+            # --- SOFORTIGES SPEICHERN DER ANTWORT ---
             assistant_msg_id = None
             if display_text or md_content:
                 initial_ws = 'PENDING' if md_content else None
-                # Use db_user_id (which is 0 for guests)
                 assistant_msg_id = save_chat_message(db_user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
+                print(f"DEBUG: Message saved to DB for session {chat_session_id}")
 
+            # --- AUTO-NAMING ---
+            if user_id:
+                current_name = get_session_name(user_id, chat_session_id)
+                if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
+                    new_title = ""
+                    try:
+                        import time
+                        time.sleep(5)
+                        print(f"DEBUG: Auto-naming session {chat_session_id} using {MODEL}...")
+                        title_prompt = f"Gib diesem Thema einen extrem kurzen Namen (2-3 Wörter): {question}\nAntworte NUR mit dem Namen."
+                        title_res = client.chat.completions.create(
+                            model=MODEL, 
+                            messages=[{"role": "user", "content": title_prompt}],
+                            max_tokens=25,
+                            temperature=0.7
+                        )
+                        raw_title = title_res.choices[0].message.content or ""
+                        new_title = re.sub(r'^(Titel|Name|Thema|Chat):\s*', '', raw_title.strip(), flags=re.IGNORECASE).strip('"').strip('.').strip()
+                    except Exception as e:
+                        print(f"DEBUG: LLM naming failed ({e}), using fallback.")
+                    
+                    if not new_title or len(new_title) < 2:
+                        words = question.split()
+                        new_title = " ".join(words[:4]) + ("..." if len(words) > 4 else "")
+                    
+                    rename_chat_session(user_id, chat_session_id, new_title)
+                    if not client_disconnected:
+                        yield f"data: SESSION_TITLE:{new_title}\n\n"
+
+            # --- WORKSHEET GENERATION ---
             pdf_basename = None
             if md_content:
                 has_context = has_request_context()
-                if has_context:
-                    if not client_disconnected: yield "data: START_WORKSHEET_GENERATION\n\n"
+                if has_context and not client_disconnected: yield "data: START_WORKSHEET_GENERATION\n\n"
                 
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename, pdf_filename = f"sheets/{worksheet_uuid}.md", f"sheets/{worksheet_uuid}.pdf"
@@ -576,19 +596,9 @@ def ask():
                     if has_context and not client_disconnected: yield "data: Fehler bei der PDF-Erstellung.\n\n"
                     if os.path.exists(md_filename): pdf_basename = os.path.basename(md_filename)
 
-            if assistant_msg_id and pdf_basename:
-                update_chat_message_worksheet(assistant_msg_id, pdf_basename)
-            
-            # we used to store a per-session flag in the Flask session
-            # indicating that a worksheet was being generated. that state
-            # is no longer relied upon anywhere (we use the chat_history
-            # table and the generating_sessions counter instead), so this
-            # cleanup is effectively a no-op. leave it here only to avoid
-            # surprising errors if some old code still sets the key.
-            # if has_request_context():
-            #     try: session.pop('generating_worksheet', None)
-            #     except RuntimeError: pass
-            
+                if assistant_msg_id and pdf_basename:
+                    update_chat_message_worksheet(assistant_msg_id, pdf_basename)
+
             if not client_disconnected:
                 if homework_results: yield "data: HOMEWORK_UPDATED\n\n"
                 if pdf_basename: yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
@@ -596,12 +606,10 @@ def ask():
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
-            if not client_disconnected: yield f"data: Ein unerwarteter Fehler ist aufgetreten: {str(e)}\n\n"
+            error_msg = f"❌ Ein unerwarteter Fehler ist aufgetreten: {str(e)}"
+            save_chat_message(db_user_id, chat_session_id, 'assistant', error_msg, chat_subject=current_chat_subject)
+            if not client_disconnected: yield f"data: {error_msg}\n\n"
         finally:
-            # decrement and remove entry when there are no more
-            # active streams.  using a counter prevents the case where
-            # one long-running stream clears the flag while another is
-            # still running.
             if chat_session_id in generating_sessions:
                 generating_sessions[chat_session_id] -= 1
                 if generating_sessions[chat_session_id] <= 0:
@@ -642,6 +650,18 @@ def load_chat(session_id):
     session['chat_session_id'] = session_id
 
     return jsonify({'chat_history': chat_history})
+
+@app.route('/privacy-policy')
+def privacy_policy():
+    return render_template('legal/privacy_policy_page.html')
+
+@app.route('/impressum')
+def impressum():
+    return render_template('legal/impressum_page.html')
+
+@app.route('/agb')
+def agb():
+    return render_template('legal/agb_page.html')
 
 @app.route('/get-chat-history', methods=['GET'])
 def get_current_chat_history():

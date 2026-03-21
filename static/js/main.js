@@ -445,7 +445,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         chatInput.addEventListener('input', function() {
             this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
+            const newHeight = Math.min(this.scrollHeight, 200);
+            this.style.height = newHeight + 'px';
+            this.style.overflowY = this.scrollHeight > 200 ? 'auto' : 'hidden';
             updateButtonVisibility();
         });
         
@@ -1220,7 +1222,6 @@ document.addEventListener('DOMContentLoaded', function() {
             chatView.classList.add('hidden');
             settingsView.classList.remove('hidden');
             showSettingsHome(); // Reset to home
-            loadSettings();
         });
     }
 
@@ -1553,6 +1554,353 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAllChatSessionsAndRender();
 
         setTimeout(checkWorksheetStatusOnLoad, 500);
+
+        // ===== TUTORIAL SYSTEM mit Intro.js =====
+        
+        // Warten bis Intro.js geladen ist
+        function waitForIntro() {
+            return new Promise((resolve) => {
+                if (typeof introJs !== 'undefined') {
+                    resolve();
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (typeof introJs !== 'undefined') {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    // Timeout nach 5 Sekunden
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }, 5000);
+                }
+            });
+        }
+        
+        // Tutorial-Funktion mit Intro.js
+        window.startTutorial = async function() {
+            console.log('startTutorial() aufgerufen');
+            
+            // Bestehende Instanzen aggressiv aufräumen, falls vorhanden
+            if (window.introJsInstance) {
+                try {
+                    window.introJsInstance.exit(true);
+                } catch (e) {}
+            }
+            
+            // Manuelles Cleanup für den Fall, dass Fragmente übrig sind
+            document.querySelectorAll('.introjs-overlay, .introjs-helperLayer, .introjs-tooltipReferenceLayer, .introjs-tooltip').forEach(el => el.remove());
+            
+            // Warte auf Intro.js
+            await waitForIntro();
+            
+            // Stelle sicher, dass Intro.js geladen ist
+            if (typeof introJs === 'undefined') {
+                console.error('Intro.js konnte nicht geladen werden');
+                alert('Tutorial-Bibliothek konnte nicht geladen werden. Bitte aktualisieren Sie die Seite.');
+                return;
+            }
+
+            console.log('Intro.js ist geladen, starte Tour...');
+
+            // Definiere die Tutorial-Schritte für Intro.js
+            const isMobileWidth = window.innerWidth <= 500;
+            
+            const steps = [
+                {
+                    element: '#sidebar-menu-btn',
+                    title: '📋 Menü & Navigation',
+                    intro: 'Hier öffnest du das Seitenmenü. Dort findest du deine Chats, Aufgaben und Hausaufgaben.',
+                    position: 'bottom'
+                },
+                {
+                    element: '#tabs-container',
+                    title: '📦 Alles an einem Ort',
+                    intro: (isMobileWidth 
+                        ? 'Hier findest du deine Chats (deine Fragen), Aufgaben (von Lehrern) und Hausaufgaben (zum Organisieren). Wische nach links, um alles zu sehen!'
+                        : 'Hier verwaltest du deine Chats, Aufgaben und Hausaufgaben. Die KI hilft dir dabei, alles zu strukturieren und Hausaufgaben sogar direkt in den Kalender einzutragen.') + (isGuest ? '<br><br>⚠️ *Hinweis: Aufgaben und Hausaufgaben sind nur verfügbar, wenn du angemeldet bist.*' : ''),
+                    position: 'bottom'
+                },
+                {
+                    element: '#new-chat-btn',
+                    title: '💬 Neuer Chat',
+                    intro: 'Starte hier eine neue Unterhaltung, um Fragen zu stellen oder Hilfe beim Lernen zu bekommen.',
+                    position: 'right'
+                },
+                {
+                    element: '#chat-input',
+                    title: '❓ Fragen stellen & Arbeitsblätter',
+                    intro: 'Schreibe der KI deine Fragen. Tipp: Sag "Erstelle ein Arbeitsblatt zum Thema...", um ein PDF zu erhalten!',
+                    position: 'top'
+                },
+                {
+                    element: '#settings-btn',
+                    title: '⚙️ Einstellungen',
+                    intro: 'Hier kannst du das Gedächtnis der KI verwalten.',
+                    position: 'left'
+                }
+            ];
+
+            // Überprüfe, welche Elemente existieren
+            const validSteps = steps.filter(step => {
+                const element = document.querySelector(step.element);
+                if (!element) {
+                    console.warn(`Element nicht gefunden: ${step.element}`);
+                    return false;
+                }
+                return true;
+            });
+
+            console.log(`${validSteps.length} von ${steps.length} Schritte gefunden`);
+
+            if (validSteps.length === 0) {
+                console.error('Keine gültigen Tutorial-Elemente gefunden!');
+                alert('Tutorial konnte nicht gestartet werden. Bitte aktualisieren Sie die Seite.');
+                return;
+            }
+
+            try {
+                console.log('Initialisiere Intro.js...');
+                const intro = introJs();
+                
+                intro.setOptions({
+                    steps: validSteps,
+                    showProgress: false,
+                    showButtons: true,
+                    doneLabel: '✕',
+                    nextLabel: 'Weiter →',
+                    prevLabel: '← Zurück',
+                    skipLabel: '✕',
+                    hidePrev: false,
+                    hideNext: false,
+                    showBullets: false,
+                    scrollToElement: true,
+                    overlayOpacity: 0.7,
+                    disableInteraction: false,
+                    helperElementPadding: 10, // Abstand um das Element für bessere Zentrierung
+                    keyboardNavigation: true,
+                    exitOnEsc: true,
+                    exitOnOverlayClick: false
+                });
+
+                // Dynamische Sidebar-Steuerung
+                let lastStep = -1;
+                
+                intro.onchange(function(targetElement) {
+                    const currentStep = intro._currentStep;
+                    console.log('Schritt geändert zu:', currentStep, 'Element:', targetElement);
+                    
+                    // Nur ausführen, wenn Schritt sich wirklich geändert hat
+                    if (currentStep !== lastStep) {
+                        lastStep = currentStep;
+                        
+                        // Schritt 1 (Tabs-Container): Sidebar öffnen
+                        if (currentStep === 1) {
+                            console.log('→ Schritt 1: Sidebar öffnen');
+                            if (sidebar && !sidebar.classList.contains('translate-x-0')) {
+                                toggleSidebar();
+                                setTimeout(() => {
+                                    intro.refresh();
+                                }, 300);
+                            }
+                        }
+                        // Schritt 3 (Chat-Input): Sidebar schließen
+                        else if (currentStep === 3) {
+                            console.log('→ Schritt 3: Sidebar schließen');
+                            if (sidebar && sidebar.classList.contains('translate-x-0')) {
+                                toggleSidebar();
+                                setTimeout(() => {
+                                    intro.refresh();
+                                }, 300);
+                            }
+                        }
+                        // Schritt 4 (Settings): Sidebar öffnen
+                        else if (currentStep === 4) {
+                            console.log('→ Schritt 4: Sidebar öffnen');
+                            if (sidebar && !sidebar.classList.contains('translate-x-0')) {
+                                toggleSidebar();
+                                setTimeout(() => {
+                                    intro.refresh();
+                                }, 300);
+                            }
+                        }
+                    }
+                });
+
+                // Entferne Overlay und schließe Sidebar beim Beenden
+                const cleanupTutorial = function() {
+                    console.log('Räume Tutorial auf...');
+                    
+                    // Schließe Sidebar
+                    if (sidebar && sidebar.classList.contains('translate-x-0')) {
+                        toggleSidebar();
+                    }
+                    
+                    // Entferne ALLE Intro.js-Elemente aggressiv
+                    // Overlays
+                    document.querySelectorAll('.introjs-overlay').forEach(el => {
+                        el.style.opacity = '0';
+                        el.style.display = 'none';
+                        el.remove();
+                    });
+                    
+                    // Helper Layers
+                    document.querySelectorAll('.introjs-helperLayer').forEach(el => {
+                        el.style.display = 'none';
+                        el.remove();
+                    });
+                    
+                    // Tooltips
+                    document.querySelectorAll('.introjs-tooltip').forEach(el => {
+                        el.style.display = 'none';
+                        el.remove();
+                    });
+                    
+                    // Floating Tooltips
+                    document.querySelectorAll('[class*="floating"]').forEach(el => {
+                        if (el.classList.contains('introjs-tooltip')) {
+                            el.remove();
+                        }
+                    });
+                    
+                    // Progress bar verstecken
+                    document.querySelectorAll('.introjs-progress').forEach(el => {
+                        el.style.display = 'none !important';
+                        el.remove();
+                    });
+                    
+                    // Entferne body-Klassen
+                    document.body.classList.remove('introjs-showElement');
+                    
+                    // Markiere Tutorial als abgeschlossen
+                    localStorage.setItem('tutorialCompleted', 'true');
+                    console.log('✓ Tutorial als abgeschlossen markiert');
+                    
+                    // Aktualisiere Tutorial-Button Sichtbarkeit
+                    updateTutorialButtonVisibility();
+                    
+                    console.log('✓ Tutorial aufgeräumt');
+                };
+
+                intro.oncomplete(cleanupTutorial);
+                intro.onexit(cleanupTutorial);
+
+                console.log('Starte Intro.js Tour...');
+                intro.start();
+                console.log('✓ Tutorial erfolgreich gestartet');
+            } catch (error) {
+                console.error('Fehler beim Starten des Tutorials:', error);
+                console.error('Error Stack:', error.stack);
+                alert('Fehler beim Tutorial: ' + error.message);
+            }
+        };
+
+        // Tutorial aus den Einstellungen starten
+        window.startTutorialFromSettings = async function() {
+            console.log('startTutorialFromSettings() aufgerufen');
+            
+            // Schließe Einstellungen
+            const settingsView = document.getElementById('settings-view');
+            if (settingsView) {
+                settingsView.classList.add('hidden');
+                console.log('Einstellungen geschlossen');
+            }
+            
+            // Zeige Chat wieder
+            const chatView = document.getElementById('chat-view');
+            if (chatView) {
+                chatView.classList.remove('hidden');
+                console.log('Chat angezeigt');
+            }
+            
+            // Starte Tutorial nach kurzer Verzögerung
+            setTimeout(() => {
+                window.startTutorial();
+            }, 300);
+        };
+
+        // Registriere Tutorial-Buttons
+        function setupTutorialButtons() {
+            console.log('Richte Tutorial-Buttons ein...');
+            
+            // Function zum Aktualisieren der Button-Sichtbarkeit
+            window.updateTutorialButtonVisibility = function() {
+                const headerTutorialBtn = document.getElementById('start-tutorial-btn');
+                if (!headerTutorialBtn) return;
+                
+                // Checke ob Benutzer angemeldet ist (über das neue data-Attribut oder Logout-Button)
+                const authData = document.body.dataset.authenticated;
+                const isLoggedIn = authData === 'true' || document.querySelector('a[href="/logout"]') !== null;
+                
+                // Checke ob Tutorial bereits gemacht wurde
+                const tutorialCompleted = localStorage.getItem('tutorialCompleted') === 'true';
+                
+                // Zeige Button wenn: 
+                // - Benutzer NICHT angemeldet ist ODER
+                // - Tutorial noch nicht gemacht wurde (wichtig für neue Accounts)
+                const shouldShow = !isLoggedIn || !tutorialCompleted;
+                
+                console.log('Tutorial Status Check:', { isLoggedIn, tutorialCompleted, shouldShow });
+
+                if (shouldShow) {
+                    headerTutorialBtn.classList.remove('hidden');
+                    headerTutorialBtn.classList.add('flex'); // Zeige auf allen Größen
+                    console.log('✓ Tutorial-Button sichtbar');
+                } else {
+                    headerTutorialBtn.classList.add('hidden');
+                    headerTutorialBtn.classList.remove('flex');
+                    console.log('✓ Tutorial-Button versteckt (Bedingungen nicht erfüllt)');
+                }
+            };
+            
+            // Aktualisiere Button-Sichtbarkeit beim Setup
+            updateTutorialButtonVisibility();
+            
+            // Header-Button
+            const headerTutorialBtn = document.getElementById('start-tutorial-btn');
+            if (headerTutorialBtn) {
+                // Entferne alte Listener
+                const newBtn = headerTutorialBtn.cloneNode(true);
+                headerTutorialBtn.parentNode.replaceChild(newBtn, headerTutorialBtn);
+                
+                // Registriere neuen Listener
+                newBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Header-Tutorial-Button geklickt');
+                    window.startTutorial();
+                });
+                console.log('✓ Header-Tutorial-Button eingerichtet');
+            } else {
+                console.warn('✗ Header-Tutorial-Button nicht gefunden');
+            }
+            
+            // Settings-Button mit Event-Delegation auf die Eltern-Container
+            const settingsHome = document.getElementById('settings-home');
+            if (settingsHome) {
+                settingsHome.addEventListener('click', function(e) {
+                    // Überprüfe, ob geklicktes Element der Tutorial-Button oder ein Kind davon ist
+                    const tutorialBtn = e.target.closest('#start-tutorial-settings-btn');
+                    if (tutorialBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Settings-Tutorial-Button geklickt');
+                        window.startTutorialFromSettings();
+                        return false;
+                    }
+                });
+                console.log('✓ Settings-Tutorial-Button eingerichtet');
+            } else {
+                console.warn('✗ settings-home nicht gefunden');
+            }
+        }
+        
+        // Richte Buttons sofort ein (im DOMContentLoaded-Callback)
+        setupTutorialButtons();
+        
+        // Und nochmal nach einer Verzögerung als Sicherheitsmaßnahme
+        setTimeout(setupTutorialButtons, 1000);
 
     });
 
