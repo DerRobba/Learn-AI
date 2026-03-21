@@ -9,6 +9,155 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <!-- Intro.js für Tutorial -->
+    <script src="https://cdn.jsdelivr.net/npm/intro.js@7.0.1/minified/intro.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intro.js@7.0.1/minified/introjs.min.css" />
+    <style>
+        /* --- INTRO.JS PERFECT FOCUS FIX --- */
+        
+        /* Das Standard-Overlay unsichtbar machen, da wir den helperLayer für den Schatten nutzen */
+        .introjs-overlay {
+            background-color: transparent !important;
+            opacity: 0 !important;
+            pointer-events: none !important; /* Klicks durchlassen */
+        }
+        
+        /* Der Highlight-Kasten: Erzeugt das "klare Loch" */
+        .introjs-helperLayer {
+            background-color: transparent !important;
+            border-radius: 20px !important;
+            border: 2px solid rgba(255, 255, 255, 0.9) !important;
+            /* Dieser Schatten erzeugt den dunklen Hintergrund AUẞERHALB des Kastens */
+            box-shadow: 0 0 0 1000vw rgba(0, 0, 0, 0.7) !important;
+            /* Optimierte Transition für flüssiges Mitgleiten (besonders bei Sidebar-Wechsel) */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            pointer-events: none !important;
+            box-sizing: content-box !important;
+        }
+        
+        /* Tooltip-Referenz-Layer komplett ignorieren */
+        .introjs-tooltipReferenceLayer {
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+        }
+        
+        /* Basis Tooltip Styling */
+        .introjs-tooltip {
+            background-color: white !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
+            border-radius: 24px !important;
+            max-width: 350px !important;
+            border: none !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+        }
+        
+        /* Innere Elemente */
+        .introjs-tooltip-header,
+        .introjs-tooltip-content,
+        .introjs-tooltipbuttons,
+        .introjs-tooltiptext {
+            background: transparent !important;
+            border: none !important;
+        }
+        
+        .introjs-tooltip-title {
+            font-size: 19px !important;
+            font-weight: 800 !important;
+            padding: 24px 24px 0 24px !important;
+            color: #111827 !important;
+            font-family: 'Inter', sans-serif !important;
+            letter-spacing: -0.02em !important;
+        }
+        
+        .introjs-tooltip-content {
+            font-size: 14px !important;
+            padding: 16px 24px 12px 24px !important;
+            color: #4b5563 !important;
+            line-height: 1.6 !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        
+        .introjs-tooltipbuttons {
+            padding: 12px 20px 24px 20px !important;
+            display: flex !important;
+            justify-content: flex-end !important;
+            gap: 10px !important;
+        }
+        
+        /* Button Styling & Fix für doppelte Schrift */
+        .introjs-button {
+            text-shadow: none !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 14px !important;
+            padding: 12px 20px !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            font-family: 'Inter', sans-serif !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            cursor: pointer !important;
+            margin: 0 !important;
+            outline: none !important;
+            -webkit-font-smoothing: antialiased !important;
+            -moz-osx-font-smoothing: grayscale !important;
+        }
+        
+        .introjs-button.introjs-prevbutton {
+            background-color: #f3f4f6 !important;
+            color: #4b5563 !important;
+        }
+        
+        .introjs-button.introjs-prevbutton:hover {
+            background-color: #e5e7eb !important;
+        }
+        
+        .introjs-button.introjs-nextbutton {
+            background-color: #8b5cf6 !important;
+            color: white !important;
+        }
+        
+        .introjs-button.introjs-nextbutton:hover {
+            background-color: #7c3aed !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+        }
+        
+        .introjs-button.introjs-donebutton {
+            background-color: #10b981 !important;
+            color: white !important;
+        }
+        
+        .introjs-button.introjs-donebutton:hover {
+            background-color: #059669 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+        }
+        
+        /* Pfeil-Styling */
+        .introjs-arrow {
+            border-bottom-color: white !important;
+            border-top-color: white !important;
+        }
+        
+        /* Verstecke Fortschrittsleiste */
+        .introjs-progress, .introjs-progressbar {
+            display: none !important;
+        }
+        
+        /* Mobile Fixes */
+        @media (max-width: 640px) {
+            .introjs-tooltip {
+                max-width: 85vw !important;
+                margin: 0 auto !important;
+            }
+            .introjs-button {
+                padding: 10px 16px !important;
+                font-size: 12px !important;
+            }
+        }
+    </style>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -113,7 +262,7 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen">
+<body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen" data-authenticated="{{ 'false' if is_guest else 'true' }}">
     <input type="hidden" id="user-type" value="{{ user_type }}">
 
     <!-- Mobile Overlay -->
@@ -131,6 +280,10 @@
                 </button>
                 <button id="new-chat-btn" class="flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors duration-300" title="Neuer Chat">
                     <span class="material-symbols-outlined text-lg">add_comment</span>
+                </button>
+                <button id="start-tutorial-btn" class="hidden flex items-center justify-center space-x-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-colors duration-300" title="Tutorial starten">
+                    <span class="material-symbols-outlined text-lg">help</span>
+                    <span class="hidden md:inline text-sm font-medium">Tutorial</span>
                 </button>
             </div>
 
@@ -167,7 +320,7 @@
             <aside id="sidebar" class="w-3/4 md:w-80 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 ease-in-out fixed top-16 bottom-0 left-0 z-40 flex flex-col">
                 <!-- Sidebar Header -->
                 <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-                    <div class="overflow-x-auto no-scrollbar">
+                    <div id="tabs-container" class="overflow-x-auto no-scrollbar">
                         <div class="flex items-center space-x-2 min-w-max pb-1">
                             <button id="chats-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700">Chats</button>
                             <button id="assignments-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100">Aufgaben</button>
@@ -346,8 +499,8 @@
                     <!-- Input Container -->
                     <div class="p-4 md:p-6 bg-white border-t border-gray-200 md:border-t-0">
                         <div class="relative">
-                            <textarea id="chat-input" class="w-full pl-4 pr-16 py-3 bg-gray-100 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" placeholder="Schreibe eine Nachricht..." rows="1"></textarea>
-                            <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                            <textarea id="chat-input" class="w-full pl-4 pr-36 py-3 bg-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 resize-none overflow-y-auto" placeholder="Schreibe eine Nachricht..." rows="1" style="max-height: 200px;"></textarea>
+                            <div class="absolute right-2 top-3 flex items-center space-x-1 sm:space-x-2">
                                 <button id="image-upload-button" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-200 transition-colors duration-300">
                                     <span class="material-symbols-outlined text-gray-600">image</span>
                                 </button>
@@ -401,6 +554,20 @@
 
                         <!-- Settings Main Menu -->
                         <div id="settings-home" class="space-y-4">
+                            <!-- Tutorial Button -->
+                            <button id="start-tutorial-settings-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-orange-200 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">help</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Projekt-Einführung starten</h3>
+                                        <p class="text-sm text-gray-500">Interaktive geführte Tour durch alle Funktionen.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-gray-400 group-hover:text-orange-600">chevron_right</span>
+                            </button>
+
                             <!-- Link to Memories -->
                             <button id="open-memories-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-purple-200 transition-all group text-left">
                                 <div class="flex items-center space-x-4">
@@ -452,41 +619,31 @@
                             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                                 <div class="space-y-4">
                                     <div class="flex items-center space-x-3">
-                                        <button id="open-privacy-policy-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                        <a href="/privacy-policy" target="_blank" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
                                             <span class="text-gray-700 font-medium group-hover:text-purple-600">Datenschutzerklärung</span>
-                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
-                                        </button>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">open_in_new</span>
+                                        </a>
                                     </div>
                                     <div class="flex items-center space-x-3">
-                                        <button id="open-impressum-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                        <a href="/impressum" target="_blank" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
                                             <span class="text-gray-700 font-medium group-hover:text-purple-600">Impressum</span>
-                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
-                                        </button>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">open_in_new</span>
+                                        </a>
                                     </div>
                                     <div class="flex items-center space-x-3">
-                                        <button id="open-agb-btn" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
+                                        <a href="/agb" target="_blank" class="flex-1 flex items-center justify-between p-3 rounded-xl hover:bg-purple-50 transition-colors group">
                                             <span class="text-gray-700 font-medium group-hover:text-purple-600">Nutzungsbedingungen</span>
-                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
-                                        </button>
+                                            <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">open_in_new</span>
+                                        </a>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Privacy Policy Text Section (Hidden by default) -->
-                        <div id="privacy-policy-text-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-                            {% include 'legal/privacy_policy.html' %}
-                        </div>
-
-                        <!-- Impressum Section (Hidden by default) -->
-                        <div id="impressum-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-                            {% include 'legal/impressum.html' %}
-                        </div>
-
-                        <!-- Nutzungsbedingungen Section (Hidden by default) -->
-                        <div id="agb-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
-                            {% include 'legal/agb.html' %}
-                        </div>
+                        <!-- Wir entfernen die alten Sektionen, da sie nun über die Routen geladen werden -->
+                        <div id="privacy-policy-text-section" class="hidden"></div>
+                        <div id="impressum-section" class="hidden"></div>
+                        <div id="agb-section" class="hidden"></div>
 
                         <!-- Memories Section (Hidden by default) -->
                         <div id="memories-section" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
