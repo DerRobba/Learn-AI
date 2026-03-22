@@ -7,7 +7,6 @@ The core functionalities of the application include:
 *   **User Authentication:**  The application supports three user roles: `student`, `teacher`, and `it-admin`. Each role has different permissions and views within the application.
 *   **Chat Interface:** A real-time chat interface allows users to interact with an AI model. The application stores the chat history for each user.
 *   **Assignment Management:** Teachers can create, view, and delete assignments. Students can view assignments and submit their work.
-*   **Text-to-Speech:** The application uses the ElevenLabs API to convert text to speech.
 *   **PDF Generation:** The application can generate PDF worksheets from Markdown content.
 
 ## Building and Running
@@ -27,8 +26,6 @@ To run this project, you need to have Python and the required packages installed
     BASE_URL=your-openai-compatible-base-url
     MODEL=your-model-name
     API_KEY=your-api-key
-    ELEVENLABS_API_KEY=your-elevenlabs-api-key
-    ELEVENLABS_VOICE_ID=your-elevenlabs-voice-id
     SYSTEM_PROMPT="Your system prompt for the AI model"
     VISION_SYSTEM_PROMPT="Your system prompt for the vision model"
     IP_BAN_LIST=

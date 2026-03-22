@@ -281,6 +281,10 @@
                 <button id="new-chat-btn" class="flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors duration-300" title="Neuer Chat">
                     <span class="material-symbols-outlined text-lg">add_comment</span>
                 </button>
+                <a href="https://rate.l-ai.pro" target="_blank" class="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-600 rounded-xl hover:bg-yellow-200 transition-colors duration-300" title="Bewerten">
+                    <span class="material-symbols-outlined text-lg">star</span>
+                    <span class="hidden md:inline text-sm font-medium">Bewerten</span>
+                </a>
                 <button id="start-tutorial-btn" class="hidden flex items-center justify-center space-x-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-colors duration-300" title="Tutorial starten">
                     <span class="material-symbols-outlined text-lg">help</span>
                     <span class="hidden md:inline text-sm font-medium">Tutorial</span>
@@ -288,7 +292,7 @@
             </div>
 
             <!-- Center: Logo -->
-            <div class="flex items-center space-x-2 sm:space-x-3">
+            <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-2 sm:space-x-3">
                 <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                     <span class="material-symbols-outlined text-white text-lg">neurology</span>
                 </div>
@@ -446,8 +450,8 @@
                 </div>
 
                 <!-- User Profile / Bottom Section -->
-                {% if not is_guest %}
-                <div class="mt-auto p-4 border-t border-gray-200 bg-gray-50">
+                <div class="mt-auto p-4 border-t border-gray-200 bg-gray-50 space-y-2">
+                    {% if not is_guest %}
                     <div class="flex items-center space-x-3 mb-3">
                         <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">
                             {{ username[0].upper() }}
@@ -464,14 +468,22 @@
                             <span class="material-symbols-outlined">logout</span>
                         </a>
                     </div>
+                    {% endif %}
                     
-                    <!-- Settings Button -->
+                    <!-- Legal Button (Always visible) -->
+                    <button id="sidebar-legal-btn" class="w-full flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                        <span class="material-symbols-outlined">shield</span>
+                        <span class="text-sm font-medium">Rechtliches</span>
+                    </button>
+
+                    <!-- Settings Button (Only for logged in users) -->
+                    {% if not is_guest %}
                     <button id="settings-btn" class="w-full flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                         <span class="material-symbols-outlined">settings</span>
                         <span class="text-sm font-medium">Einstellungen</span>
                     </button>
+                    {% endif %}
                 </div>
-                {% endif %}
             </aside>
 
             <!-- Main Chat Container -->
@@ -498,17 +510,17 @@
 
                     <!-- Input Container -->
                     <div class="p-4 md:p-6 bg-white border-t border-gray-200 md:border-t-0">
-                        <div class="relative">
-                            <textarea id="chat-input" class="w-full pl-4 pr-36 py-3 bg-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 resize-none overflow-y-auto" placeholder="Schreibe eine Nachricht..." rows="1" style="max-height: 200px;"></textarea>
-                            <div class="absolute right-2 top-3 flex items-center space-x-1 sm:space-x-2">
-                                <button id="image-upload-button" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-200 transition-colors duration-300">
+                        <div class="relative flex items-center">
+                            <textarea id="chat-input" class="w-full pl-4 pr-32 py-3 bg-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 resize-none overflow-y-auto" placeholder="Schreibe eine Nachricht..." rows="1" style="max-height: 200px;"></textarea>
+                            <div class="absolute right-2 flex items-center space-x-1 sm:space-x-2">
+                                <button id="image-upload-button" class="flex items-center justify-center w-9 h-9 rounded-full hover:bg-gray-200 transition-colors duration-300">
                                     <span class="material-symbols-outlined text-gray-600">image</span>
                                 </button>
-                                <button id="record-button" class="flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
-                                    <span class="material-symbols-outlined">mic</span>
+                                <button id="record-button" class="flex items-center justify-center w-9 h-9 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                    <span class="material-symbols-outlined text-xl">mic</span>
                                 </button>
-                                <button id="send-button" class="hidden flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
-                                    <span class="material-symbols-outlined">send</span>
+                                <button id="send-button" class="hidden flex items-center justify-center w-9 h-9 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors duration-300">
+                                    <span class="material-symbols-outlined text-xl">send</span>
                                 </button>
                             </div>
                         </div>
@@ -577,20 +589,6 @@
                                     <div>
                                         <h3 class="text-lg font-semibold text-gray-800">Gedächtnis & Erinnerungen</h3>
                                         <p class="text-sm text-gray-500">Verwalte, was die KI über dich weiß.</p>
-                                    </div>
-                                </div>
-                                <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
-                            </button>
-
-                            <!-- Link to Legal -->
-                            <button id="open-privacy-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-purple-200 transition-all group text-left">
-                                <div class="flex items-center space-x-4">
-                                    <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                                        <span class="material-symbols-outlined text-2xl">shield</span>
-                                    </div>
-                                    <div>
-                                        <h3 class="text-lg font-semibold text-gray-800">Rechtliches</h3>
-                                        <p class="text-sm text-gray-500">Datenschutzerklärung, Impressum und Nutzungsbedingungen.</p>
                                     </div>
                                 </div>
                                 <span class="material-symbols-outlined text-gray-400 group-hover:text-purple-600">chevron_right</span>
@@ -735,6 +733,31 @@
     </div>
 
     <input type="hidden" id="user-type" value="{{ user_type }}">
+    <input type="hidden" id="is-first-login" value="{{ is_first_login }}">
+
+    <!-- Tutorial Modal für neue Nutzer -->
+    <div id="tutorial-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div class="p-8 text-center">
+                <div class="w-20 h-20 bg-white shadow-inner rounded-full flex items-center justify-center mx-auto mb-6 p-2">
+                    <img src="{{ url_for('static', filename='favicon.ico') }}" alt="Learn-AI Logo" class="w-14 h-14 object-contain">
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 mb-3">Willkommen bei Learn-AI!</h3>
+                <p class="text-gray-600 mb-8 leading-relaxed">
+                    Möchtest du eine kurze Tour durch die App machen, um zu sehen wie alles funktioniert? 
+                    Du findest das Tutorial auch jederzeit später in den Einstellungen.
+                </p>
+                <div class="flex flex-col space-y-3">
+                    <button id="start-tutorial-now" class="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold hover:bg-purple-700 transition-all shadow-lg shadow-purple-200">
+                        Tour starten →
+                    </button>
+                    <button id="skip-tutorial-now" class="w-full py-4 text-gray-500 font-medium hover:bg-gray-50 rounded-2xl transition-all">
+                        Später ansehen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

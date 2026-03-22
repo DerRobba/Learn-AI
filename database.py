@@ -19,13 +19,19 @@ def init_database():
             class_name TEXT,
             school TEXT,
             math_solver BOOLEAN DEFAULT 0,
+            is_first_login BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
-    # Add math_solver column to users table if it doesn't exist
+    # Add columns to users table if they don't exist
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN math_solver BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_first_login BOOLEAN DEFAULT 1")
     except sqlite3.OperationalError:
         pass
 
@@ -888,6 +894,30 @@ def get_math_solver_status(user_id):
     result = cursor.fetchone()
     conn.close()
     return bool(result[0]) if result else False
+
+def get_first_login_status(user_id):
+    """Get the first login status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT is_first_login FROM users WHERE id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return bool(result[0]) if result else False
+
+def set_first_login_status(user_id, status):
+    """Set the first login status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE users SET is_first_login = ? WHERE id = ?', (status, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
 def get_all_previous_chats_summaries(user_id, exclude_session_id=None):
     """Get summaries of all previous chats for a user to provide context to the AI"""
     conn = sqlite3.connect(DATABASE_PATH)
