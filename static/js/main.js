@@ -251,30 +251,52 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const eventSource = new EventSource(`/ask?question=${encodeURIComponent(text)}`);
         currentEventSource = eventSource;
+        let lastMessageTime = Date.now();
+        let timeoutCheckInterval = null;
+        
+        // Check for connection timeout - restart if no data for 45 seconds
+        timeoutCheckInterval = setInterval(() => {
+            const timeSinceLastMessage = Date.now() - lastMessageTime;
+            if (timeSinceLastMessage > 45000 && eventSource.readyState === 1) {
+                console.warn('EventSource timeout - no data for 45 seconds, reconnecting...');
+                eventSource.close();
+                // The onerror handler will clean up and show error
+            }
+        }, 10000); // Check every 10 seconds
+        
         // when the SSE connection terminates (either natural or due to error)
         // clear the stored reference so that future calls won't try to close it.
         eventSource.onerror = function(e) {
+            clearInterval(timeoutCheckInterval);
             if (currentEventSource === eventSource) currentEventSource = null;
+            // Don't show error for normal closure
+            if (e.type !== 'close') {
+                console.error('EventSource error:', e);
+            }
         };
         let fullAnswer = '';
         let botMessageAppended = false;
         let worksheetLoadingIndicator = { val: null };
 
         eventSource.onmessage = function(event) {
-            // when the stream finishes or errors we should clear the
-            // global reference so that a future sendToServer call will not
-            // mistakenly close the wrong object.
+            // Reset timeout on each message
+            lastMessageTime = Date.now();
+            
+            const content = event.data;
+            const trimmedContent = content.trim();
 
-            if (!botMessageAppended) {
+            // Ignore PING messages
+            if (trimmedContent === "PING") {
+                return;
+            }
+
+            if (!botMessageAppended && trimmedContent !== "") {
                 if (thinkingIndicator && thinkingIndicator.parentNode) {
                     thinkingIndicator.parentNode.removeChild(thinkingIndicator);
                 }
                 chatHistory.appendChild(botMessageElement);
                 botMessageAppended = true;
             }
-            
-            const content = event.data;
-            const trimmedContent = content.trim();
             
             if (trimmedContent.startsWith("WORKSHEET_DOWNLOAD_LINK:")) {
                 let worksheet_filename = trimmedContent.substring("WORKSHEET_DOWNLOAD_LINK:".length);
@@ -371,27 +393,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Remove finished action tags and replace with a single space
                 let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, ' ');
                 
-                // If we are currently inside an action tag or have a partial tag, hide it
-                // This covers <, <a, <ac, <action...
-                displayHTML = displayHTML.replace(/\s*<[a-zA-Z\/]*$/gi, ' '); 
-                displayHTML = displayHTML.replace(/\s*<action[\s\S]*$/gi, ' '); 
-                
-                // Also remove raw JSON objects/arrays and replace with space
-                displayHTML = displayHTML.replace(/(\{[\s\S]*?\}|\[[\s\S]*?\])/g, ' ');
-                displayHTML = displayHTML.replace(/[\{\[]\s*$/g, ' '); 
+                // Remove thinking/internal tags
+                displayHTML = displayHTML.replace(/\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[\/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]/gi, ' ');
+                displayHTML = displayHTML.replace(/\{(?:gedanken|thoughts|thinking|internal)[^}]*\}/gi, ' ');
 
-                // Final cleanup for stray tag fragments
-                displayHTML = displayHTML.replace(/<\/action\/?>/gi, ' ');
-                displayHTML = displayHTML.replace(/action>/gi, ' ');
+                // If we are currently inside an action tag or have a partial tag, hide ONLY the tag
+                // We use a temporary variable for the regex check to avoid mutating displayHTML incorrectly
+                let cleaningHTML = displayHTML;
                 
-                // Filter out redundant "please wait" phrases from real-time display
-                displayHTML = displayHTML.replace(/Bitte hab einen Moment Geduld, während ich es generiere\./gi, '');
-                displayHTML = displayHTML.replace(/Bitte gib mir einen Moment, damit es vollständig generiert wird\./gi, '');
+                // Hide partial tags at the end of the stream without replacing them with spaces
+                // This prevents "eating" characters if the regex is too broad
+                cleaningHTML = cleaningHTML.replace(/<[a-zA-Z\/]*$/i, ''); 
+                cleaningHTML = cleaningHTML.replace(/<action[\s\S]*$/i, ''); 
+                cleaningHTML = cleaningHTML.replace(/[\{\[]\s*$/g, ''); 
 
-                // Collapse multiple spaces into one, but don't trim() yet to allow trailing spaces from AI
-                displayHTML = displayHTML.replace(/\s+/g, ' ');
+                // Final cleanup for stray complete tag fragments
+                cleaningHTML = cleaningHTML.replace(/<\/action>/gi, '');
+                cleaningHTML = cleaningHTML.replace(/<action>/gi, '');
                 
-                botMessageElement.querySelector('.prose').innerHTML = marked.parse(displayHTML);
+                // Filter out redundant "please wait" phrases
+                cleaningHTML = cleaningHTML.replace(/Bitte hab einen Moment Geduld, während ich es generiere\./gi, '');
+                cleaningHTML = cleaningHTML.replace(/Bitte gib mir einen Moment, damit es vollständig generiert wird\./gi, '');
+                cleaningHTML = cleaningHTML.replace(/Bitte hab einen Moment Geduld\./gi, '');
+                cleaningHTML = cleaningHTML.replace(/Bitte gib mir einen Moment\./gi, '');
+
+                // Normalize whitespace for marked, but don't strip leading space if it separates words
+                cleaningHTML = cleaningHTML.replace(/\s+/g, ' ');
+                
+                // Trim leading whitespace only if it's the very start of the whole message
+                // and it was likely left over from a stripped "please wait" or tag
+                if (cleaningHTML.startsWith(' ')) {
+                    cleaningHTML = cleaningHTML.trimStart();
+                }
+                
+                botMessageElement.querySelector('.prose').innerHTML = marked.parse(cleaningHTML);
             }
             scrollToBottom();
         };
@@ -1018,6 +1053,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteHomeworkOption = document.getElementById('delete-homework');
 
     const settingsBtn = document.getElementById('settings-btn');
+    const sidebarLegalBtn = document.getElementById('sidebar-legal-btn');
     const settingsView = document.getElementById('settings-view');
     const settingsHome = document.getElementById('settings-home');
     const memoriesSection = document.getElementById('memories-section');
@@ -1039,6 +1075,50 @@ document.addEventListener('DOMContentLoaded', function() {
     const openAgbBtn = document.getElementById('open-agb-btn');
 
     const mathSolverToggle = document.getElementById('math-solver-toggle');
+
+    if (sidebarLegalBtn) {
+        sidebarLegalBtn.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                toggleSidebar(); // Close sidebar on mobile
+            }
+            chatView.classList.add('hidden');
+            settingsView.classList.remove('hidden');
+            showPrivacy(); // Directly show Legal section
+        });
+    }
+
+    // Initialize Math Solver Toggle
+    if (mathSolverToggle) {
+        // Load current status
+        fetch('/api/settings/math-solver')
+            .then(response => response.json())
+            .then(data => {
+                mathSolverToggle.checked = data.enabled;
+            })
+            .catch(err => console.error('Error loading math solver status:', err));
+
+        // Listen for changes
+        mathSolverToggle.addEventListener('change', () => {
+            const isEnabled = mathSolverToggle.checked;
+            fetch('/api/settings/math-solver', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: isEnabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Fehler beim Speichern der Einstellung.');
+                    mathSolverToggle.checked = !isEnabled; // Revert
+                }
+            })
+            .catch(err => {
+                console.error('Error saving math solver status:', err);
+                mathSolverToggle.checked = !isEnabled; // Revert
+            });
+        });
+    }
+
     const memoriesList = document.getElementById('memories-list');
     const addMemoryBtn = document.getElementById('add-memory-btn');
     const newMemoryInput = document.getElementById('new-memory-input');
@@ -1073,13 +1153,21 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.onclick = showSettingsHome;
     }
 
-    function showPrivacy() {
+    function showPrivacy(fromSidebar = false) {
         hideAllSettingsSections();
         if (privacySection) privacySection.classList.remove('hidden');
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Rechtliches';
-        backToSettingsHomeBtn.onclick = showSettingsHome;
+        
+        if (fromSidebar) {
+            backToSettingsHomeBtn.onclick = () => {
+                settingsView.classList.add('hidden');
+                chatView.classList.remove('hidden');
+            };
+        } else {
+            backToSettingsHomeBtn.onclick = showSettingsHome;
+        }
     }
 
     function showPrivacyPolicyText() {
@@ -1088,7 +1176,10 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Datenschutzerklärung';
-        backToSettingsHomeBtn.onclick = showPrivacy;
+        
+        // Use current back behavior to decide next back behavior
+        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
+        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
     }
 
     function showImpressum() {
@@ -1097,7 +1188,8 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Impressum';
-        backToSettingsHomeBtn.onclick = showPrivacy;
+        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
+        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
     }
 
     function showAgb() {
@@ -1106,11 +1198,11 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Nutzungsbedingungen';
-        backToSettingsHomeBtn.onclick = showPrivacy;
+        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
+        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
     }
 
     if (openMemoriesBtn) openMemoriesBtn.addEventListener('click', showMemories);
-    if (openPrivacyBtn) openPrivacyBtn.addEventListener('click', showPrivacy);
     if (openPrivacyPolicyBtn) openPrivacyPolicyBtn.addEventListener('click', showPrivacyPolicyText);
     if (openImpressumBtn) openImpressumBtn.addEventListener('click', showImpressum);
     if (openAgbBtn) openAgbBtn.addEventListener('click', showAgb);
@@ -1636,8 +1728,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 {
                     element: '#settings-btn',
-                    title: '⚙️ Einstellungen',
-                    intro: 'Hier kannst du das Gedächtnis der KI verwalten.',
+                    title: '⚙️ Einstellungen & Extras',
+                    intro: 'In den Einstellungen findest du alles Wichtige: Verwalte das Gedächtnis der KI und schalte den Mathe-Löser für direkte Lösungen frei.',
                     position: 'left'
                 }
             ];
@@ -1672,7 +1764,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     nextLabel: 'Weiter →',
                     prevLabel: '← Zurück',
                     skipLabel: '✕',
-                    hidePrev: false,
+                    hidePrev: true,
                     hideNext: false,
                     showBullets: false,
                     scrollToElement: true,
@@ -1901,6 +1993,34 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Und nochmal nach einer Verzögerung als Sicherheitsmaßnahme
         setTimeout(setupTutorialButtons, 1000);
+
+        // --- FIRST LOGIN TUTORIAL MODAL ---
+        const tutorialModal = document.getElementById('tutorial-modal');
+        const startTutorialNow = document.getElementById('start-tutorial-now');
+        const skipTutorialNow = document.getElementById('skip-tutorial-now');
+        const isFirstLoginEl = document.getElementById('is-first-login');
+
+        if (isFirstLoginEl && (isFirstLoginEl.value === 'True' || isFirstLoginEl.value === '1')) {
+            setTimeout(() => {
+                if (tutorialModal) {
+                    tutorialModal.classList.remove('hidden');
+                    console.log('DEBUG: Zeige Tutorial-Modal für neuen Nutzer');
+                }
+            }, 1500);
+        }
+
+        if (startTutorialNow) {
+            startTutorialNow.addEventListener('click', function() {
+                if (tutorialModal) tutorialModal.classList.add('hidden');
+                window.startTutorial();
+            });
+        }
+
+        if (skipTutorialNow) {
+            skipTutorialNow.addEventListener('click', function() {
+                if (tutorialModal) tutorialModal.classList.add('hidden');
+            });
+        }
 
     });
 

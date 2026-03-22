@@ -11,7 +11,7 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries, get_session_name
+from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries, get_session_name, get_first_login_status, set_first_login_status
 
 load_dotenv()
 
@@ -337,6 +337,12 @@ def ask():
 
     def generate():
         nonlocal current_chat_subject
+
+        def yield_sse(data):
+            for line in str(data).split('\n'):
+                yield f"data: {line}\n"
+            yield "\n"
+
         # increment the counter for active generators in this session
         generating_sessions[chat_session_id] = generating_sessions.get(chat_session_id, 0) + 1
         client_disconnected = False
@@ -345,57 +351,44 @@ def ask():
         homework_results = []
         
         try:
+            # Sofort einen Ping senden, um Timeouts zu verhindern
+            yield from yield_sse("PING")
+            
             now = datetime.now()
             # ... (Rest der Kontext-Erstellung bleibt gleich) ...
             current_date_str = now.strftime("%Y-%m-%d")
             current_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][now.weekday()]
 
             # Build conversation context
-            conversation_context = system_prompt if system_prompt else ""
+            raw_system_prompt = system_prompt if system_prompt else ""
+            
+            # Wir lassen das "niemals direkt antworten" im Grund-Prompt stehen, 
+            # fügen aber eine sehr spezifische Ausnahmeregel hinzu.
+            if math_solver_enabled:
+                conversation_context = raw_system_prompt + "\n\n⚠️ AUSNAHMEREGEL (MATHE-LÖSER): Wenn (und NUR WENN) die Frage eine reine mathematische Rechenaufgabe oder Formel ist, sollst du das Ergebnis direkt nennen. Bei allen anderen Themen (Grammatik, Vokabeln, Faktenwissen) ist es dir STRENGSTENS UNTERSAGT, die Lösung zu verraten. Dort musst du weiterhin guiden."
+            else:
+                conversation_context = raw_system_prompt
+
             conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
             
-            if not user_id:
-                conversation_context += "\n\nHINWEIS: Du sprichst mit einem GAST. Er ist nicht angemeldet. Weise ihn NUR DANN dezent auf die Anmeldung hin, wenn er fragt, wie er seine Daten dauerhaft speichern kann."
+            # --- STILLE HINTERGRUND-AKTIONEN ---
+            conversation_context += "\n\nHINTERGRUND-AUFGABEN (STRENG GEHEIM):"
+            conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide stillschweigend über das Fach mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[FACH]\"}</action>. Erwähne dies NICHT im Text."
+            
+            if user_id:
+                current_name = get_session_name(user_id, chat_session_id)
+                if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
+                    conversation_context += "\n2. TITEL: Sende <action>{\"type\": \"chat_naming\", \"title\": \"[TITEL]\"}</action> stillschweigend."
 
-            if memories_text:
-                conversation_context += f"\n\nDAS WEIßT DU ÜBER DEN BENUTZER (Erinnerungen):\n{memories_text}"
-            
-            if earlier_chat_summaries:
-                conversation_context += f"\n\nFRÜHERE CHATS (für Kontext):\n" + "\n".join(earlier_chat_summaries)
-            
-            conversation_context += f"\n\nDeine aktuelle Hausaufgaben-Liste: {json.dumps(current_homework)}"
-            conversation_context += f"\nDeine verfügbaren Fächer: {json.dumps(current_subjects)}"
-            
-            conversation_context += "\n\nANWEISUNG: Du bist ein Hausaufgaben-Assistent. Du kannst Hausaufgaben eintragen, bearbeiten oder löschen."
-            conversation_context += "\nWenn du eine Aktion durchführst, schreibe ZUERST deine Antwort an den Benutzer und füge AM ENDE deiner Nachricht die Aktion im JSON-Format zwischen <action> und </action> Tags ein."
-            conversation_context += "\nBeispiel: Ich habe Mathe eingetragen. <action>{\"type\": \"homework_action\", \"action\": \"create\", \"title\": \"Mathe S.12\", \"due_date\": \"YYYY-MM-DD\", \"subject_name\": \"Mathe\"}</action>"
-            conversation_context += "\n\nSPEICHERUNG VON FAKTEN: Sei extrem aufmerksam auf kleine Details! Wenn der Benutzer dir persönliche Informationen gibt oder diese aus hochgeladenen Dokumenten/Bildern hervorgehen (z.B. Name auf einem Arbeitsblatt, spezifische Lernschwächen, Themen die er gut/schlecht kann), speichere diese SOFORT als Erinnerung."
-            conversation_context += "\nNutze dafür: <action>{\"type\": \"memory_action\", \"action\": \"add\", \"content\": \"Der Benutzer heißt Max (aus Arbeitsblatt erkannt).\"}</action>"
-            conversation_context += "\nOder: <action>{\"type\": \"memory_action\", \"action\": \"add\", \"content\": \"Benutzer tut sich schwer mit Bruchrechnung.\"}</action>"
-            conversation_context += "\nINFO: Wenn du eine Erinnerung speicherst, erwähne beiläufig, dass der Benutzer diese jederzeit in den Einstellungen (Zahnrad-Symbol) verwalten oder löschen kann."
-            conversation_context += "\n\nKONFLIKTE LÖSEN: Wenn eine neue Information einer alten widerspricht (z.B. Benutzer heißt jetzt Peter statt Bo), LÖSCHE die alte Erinnerung!"
-            conversation_context += "\nZum Löschen nutze: <action>{\"type\": \"memory_action\", \"action\": \"delete\", \"content\": \"EXAKTER INHALT DERALTEN ERINNERUNG\"}</action>"
-            conversation_context += "\n\nWICHTIG: Nutze für 'due_date' IMMER das deutsche Format DD.MM.YYYY. Wenn der Benutzer 'morgen' sagt, berechne das Datum basierend auf HEUTE."
-            conversation_context += "\n\nWICHTIG: Benutze NIEMALS JSON-Code außerhalb von <action> Tags. Erstelle neue Fächer automatisch, indem du den 'subject_name' angibst."
-            conversation_context += "\n\nWICHTIG: Wenn der Benutzer ein Arbeitsblatt möchte, füge zusätzlich ein JSON-Objekt hinzu: <action>{\"type\": \"worksheet_creation\", \"content\": \"# Titel\\n\\n## Aufgabe 1\\nFrage...\"}</action>."
-            conversation_context += "\nACHTUNG: Der Inhalt muss valides Markdown sein. Nutze '\\n' für Zeilenumbrüche. Mache IMMER ein Leerzeichen nach '#' (z.B. '# Titel', nicht '#Titel')."
-            
-            conversation_context += "\nINFO: Wenn du ein Arbeitsblatt erstellst, bestätige dies NICHT verbal (sage NICHT 'Ich erstelle es' oder 'Gleich fertig'). Gib KEINE Überbrückungsaufgaben oder Rätsel für die Wartezeit. Schreibe einfach deine normale Antwort zum Thema und hänge den <action> Tag an."
-            conversation_context += "\n\nDRINGEND: Achte penibel auf korrekte Leerzeichen! Setze NACH jedem Satzzeichen (.,!?) ein Leerzeichen, BEVOR du weiterschreibst oder einen <action> Tag öffnest."
-            conversation_context += "\n\nCHAT-FACH FESTLEGEN: Setze das Fach des Chats mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[DAS SCHULFACH]\"}</action>. Dies soll NUR EINMAL am Anfang des Chats geschehen, wenn das Fach klar ist (z.B. Mathe, Deutsch, Physik). Nutze eines der verfügbaren Fächer, falls passend."
-            
-            if current_chat_subject:
-                conversation_context += f"\nINFO: Das aktuelle Fach ist '{current_chat_subject}'. Es wurde bereits festgelegt."
-            else:
-                conversation_context += "\nINFO: Es ist noch kein Fach festgelegt. Bitte ordne den Chat einem Fach zu, sobald es klar ist."
-
+            # Finaler Entscheidungs-Check
             if math_solver_enabled:
-                 conversation_context += "\n\nÜBERSCHREIBUNG: Der Mathe-Löser ist AKTIVIERT. Ignoriere die Anweisung 'niemals die Lösung sagen'. Du darfst jetzt Ergebnisse direkt nennen, Aufgaben vorrechnen und Lösungen präsentieren. Nuze LaTeX für Formeln."
+                 conversation_context += "\n\nENTSCHEIDUNGSMATRIX:\n- Mathe-Aufgabe? -> Lösung direkt nennen.\n- Deutsch/Sprachen/Sonstiges? -> Lösung NIEMALS nennen, nur Tipps geben (Guiding)."
             else:
-                 conversation_context += "\n\nREPETITION: Der Mathe-Löser ist DEAKTIVIERT. Du darfst weiterhin KEINE Lösungen nennen, sondern musst den Schüler durch Tipps zur Lösung führen (Guiding)."
+                 conversation_context += "\n\nENTSCHEIDUNGSMATRIX: Alle Fächer -> Nur Tipps geben (Guiding)."
 
             processed_history = []
             for msg in chat_history_for_gen:
+                # ... (Rest der History-Verarbeitung bleibt gleich)
                 role = msg['message_type']
                 if role not in ['user', 'assistant']: continue
                 content = msg['content']
@@ -410,28 +403,33 @@ def ask():
                 else:
                     if role != processed_history[-1]['role']: processed_history.append(msg_obj)
                     else: processed_history[-1]['content'] = str(processed_history[-1]['content']) + "\n" + content
-            
+
             # Construct messages for the model
-            messages = []
-            if processed_history:
-                # Prepend conversation_context to the first message if it's from the user
-                if processed_history[0]['role'] == 'user':
-                    if isinstance(processed_history[0]['content'], list):
-                        # Multi-modal content
-                        processed_history[0]['content'][0]['text'] = conversation_context + "\n\n" + processed_history[0]['content'][0]['text']
-                    else:
-                        # Simple text content
-                        processed_history[0]['content'] = conversation_context + "\n\n" + processed_history[0]['content']
-                    messages = processed_history
-                else:
-                    # If history starts with assistant (unlikely), prepend a system/user prompt anyway
-                    messages = [{"role": "user", "content": conversation_context}] + processed_history
+            messages = [{"role": "system", "content": conversation_context}]
+            
+            # Add final reminder for math solver or guiding
+            final_reminder = ""
+            if math_solver_enabled:
+                final_reminder = "\n\n⚠️ ERINNERUNG: Der Mathe-Löser ist AKTIV. Löse NUR mathematische Aufgaben JETZT DIREKT. Für alle anderen Fächer (Deutsch, Sprachen, etc.) gilt weiterhin striktes GUIDING!"
             else:
-                # No history, start with user context
-                messages = [{"role": "user", "content": conversation_context}]
+                final_reminder = "\n\n⚠️ ERINNERUNG: Der Mathe-Löser ist AUS. Für ALLE Fächer gilt striktes GUIDING (keine Lösungen nennen)."
+
+            for i, msg in enumerate(processed_history):
+                role = msg['role']
+                content = msg['content']
+                
+                # Wenn es die letzte User-Nachricht ist, hänge den Reminder an
+                if i == len(processed_history) - 1 and role == 'user':
+                    if isinstance(content, list):
+                        content[0]['text'] += final_reminder
+                    else:
+                        content += final_reminder
+                
+                messages.append({"role": role, "content": content})
 
             if messages and messages[-1]['role'] == 'user':
-                messages.append({"role": "assistant", "content": "..."})
+                # Falls wir eine leere Antwort erzwingen wollten (aus altem Code)
+                pass 
 
             # --- KI ANFRAGE MIT RETRY LOGIK ---
             max_retries = 3
@@ -465,7 +463,7 @@ def ask():
                     
                     # In DB speichern
                     save_chat_message(db_user_id, chat_session_id, 'assistant', final_error, chat_subject=current_chat_subject)
-                    yield f"data: {final_error}\n\n"
+                    yield from yield_sse(final_error)
                     return
 
             try:
@@ -475,7 +473,7 @@ def ask():
                         full_answer += content
                         if not client_disconnected:
                             try:
-                                yield f"data: {content}\n\n"
+                                yield from yield_sse(content)
                             except GeneratorExit:
                                 client_disconnected = True
                                 print(f"DEBUG: Client disconnected for session {chat_session_id}, finishing in background.")
@@ -526,19 +524,38 @@ def ask():
                             if subject:
                                 update_chat_session_subject(user_id, chat_session_id, subject)
                                 current_chat_subject = subject
-                                if not client_disconnected: yield f"data: SESSION_SUBJECT:{subject}\n\n"
+                                if not client_disconnected: yield from yield_sse(f"SESSION_SUBJECT:{subject}")
+                        elif res.get('type') == 'chat_naming':
+                            new_title = res.get('title')
+                            if user_id and new_title:
+                                rename_chat_session(user_id, chat_session_id, new_title)
+                                if not client_disconnected: yield from yield_sse(f"SESSION_TITLE:{new_title}")
                 except Exception: continue
 
-            # Cleanup display text
+            # Cleanup display text - Remove only internal markup, not regular brackets in text
             display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
-            display_text = re.sub(r'(\{.*?\}|\[.*?\])', ' ', display_text)
+            # Remove "thinking"/"thoughts" tags and similar internal markup only
+            display_text = re.sub(r'\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]', ' ', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\{(?:gedanken|thoughts|thinking|internal)[^}]*\}', ' ', display_text, flags=re.IGNORECASE)
             display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
+            
+            # Only remove incomplete brackets/tags at end of text
             display_text = re.sub(r'<action[\s\S]*$', ' ', display_text, flags=re.IGNORECASE)
             display_text = re.sub(r'\{[^{}]*$', ' ', display_text)
             
-            redundant_phrases = [r'Bitte hab einen Moment Geduld.*', r'Bitte gib mir einen Moment.*', r'Ich habe das Arbeitsblatt erstellt!', r'Das Arbeitsblatt wird gerade erstellt\.']
-            for phrase in redundant_phrases: display_text = re.sub(phrase, '', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'\s+/g', ' ', display_text).strip()
+            redundant_phrases = [
+                r'Bitte hab einen Moment Geduld, während ich es generiere\.', 
+                r'Bitte gib mir einen Moment, damit es vollständig generiert wird\.',
+                r'Bitte hab einen Moment Geduld\.',
+                r'Bitte gib mir einen Moment\.',
+                r'Ich habe das Arbeitsblatt erstellt!', 
+                r'Das Arbeitsblatt wird gerade erstellt\.'
+            ]
+            for phrase in redundant_phrases: 
+                display_text = re.sub(phrase, '', display_text, flags=re.IGNORECASE)
+            
+            # Clean up whitespace
+            display_text = re.sub(r'\s+', ' ', display_text).strip()
 
             # --- SOFORTIGES SPEICHERN DER ANTWORT ---
             assistant_msg_id = None
@@ -547,40 +564,11 @@ def ask():
                 assistant_msg_id = save_chat_message(db_user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
                 print(f"DEBUG: Message saved to DB for session {chat_session_id}")
 
-            # --- AUTO-NAMING ---
-            if user_id:
-                current_name = get_session_name(user_id, chat_session_id)
-                if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
-                    new_title = ""
-                    try:
-                        import time
-                        time.sleep(5)
-                        print(f"DEBUG: Auto-naming session {chat_session_id} using {MODEL}...")
-                        title_prompt = f"Gib diesem Thema einen extrem kurzen Namen (2-3 Wörter): {question}\nAntworte NUR mit dem Namen."
-                        title_res = client.chat.completions.create(
-                            model=MODEL, 
-                            messages=[{"role": "user", "content": title_prompt}],
-                            max_tokens=25,
-                            temperature=0.7
-                        )
-                        raw_title = title_res.choices[0].message.content or ""
-                        new_title = re.sub(r'^(Titel|Name|Thema|Chat):\s*', '', raw_title.strip(), flags=re.IGNORECASE).strip('"').strip('.').strip()
-                    except Exception as e:
-                        print(f"DEBUG: LLM naming failed ({e}), using fallback.")
-                    
-                    if not new_title or len(new_title) < 2:
-                        words = question.split()
-                        new_title = " ".join(words[:4]) + ("..." if len(words) > 4 else "")
-                    
-                    rename_chat_session(user_id, chat_session_id, new_title)
-                    if not client_disconnected:
-                        yield f"data: SESSION_TITLE:{new_title}\n\n"
-
             # --- WORKSHEET GENERATION ---
             pdf_basename = None
             if md_content:
                 has_context = has_request_context()
-                if has_context and not client_disconnected: yield "data: START_WORKSHEET_GENERATION\n\n"
+                if has_context and not client_disconnected: yield from yield_sse("START_WORKSHEET_GENERATION")
                 
                 worksheet_uuid = str(uuid.uuid4())
                 md_filename, pdf_filename = f"sheets/{worksheet_uuid}.md", f"sheets/{worksheet_uuid}.pdf"
@@ -593,22 +581,22 @@ def ask():
                     pdf_basename = os.path.basename(pdf_filename)
                 except Exception as e:
                     print(f"PDF generation failed: {e}")
-                    if has_context and not client_disconnected: yield "data: Fehler bei der PDF-Erstellung.\n\n"
+                    if has_context and not client_disconnected: yield from yield_sse("Fehler bei der PDF-Erstellung.")
                     if os.path.exists(md_filename): pdf_basename = os.path.basename(md_filename)
 
                 if assistant_msg_id and pdf_basename:
                     update_chat_message_worksheet(assistant_msg_id, pdf_basename)
 
             if not client_disconnected:
-                if homework_results: yield "data: HOMEWORK_UPDATED\n\n"
-                if pdf_basename: yield f"data: WORKSHEET_DOWNLOAD_LINK:{pdf_basename}\n\n"
+                if homework_results: yield from yield_sse("HOMEWORK_UPDATED")
+                if pdf_basename: yield from yield_sse(f"WORKSHEET_DOWNLOAD_LINK:{pdf_basename}")
 
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
             error_msg = f"❌ Ein unerwarteter Fehler ist aufgetreten: {str(e)}"
             save_chat_message(db_user_id, chat_session_id, 'assistant', error_msg, chat_subject=current_chat_subject)
-            if not client_disconnected: yield f"data: {error_msg}\n\n"
+            if not client_disconnected: yield from yield_sse(error_msg)
         finally:
             if chat_session_id in generating_sessions:
                 generating_sessions[chat_session_id] -= 1
@@ -809,6 +797,13 @@ def index():
     # Get homework
     homework = get_homework_for_user(user_id) if user_id else []
 
+    # First login check
+    is_first_login = False
+    if user_id:
+        is_first_login = get_first_login_status(user_id)
+        if is_first_login:
+            set_first_login_status(user_id, 0)
+
     return render_template('index.html',
                          user_type=user_type,
                          is_guest=not user_id,
@@ -817,7 +812,8 @@ def index():
                          chat_sessions=user_sessions,
                          current_session_id=session.get('chat_session_id'),
                          assignments=assignments,
-                         homework=homework)
+                         homework=homework,
+                         is_first_login=is_first_login)
 
 @app.route('/admin')
 def admin_dashboard():
