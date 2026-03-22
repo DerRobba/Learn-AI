@@ -1,0 +1,139 @@
+/* Learn-AI Rating App Styles */
+
+:root {
+    --primary-color: rgb(147, 51, 234);
+    --secondary-color: rgb(236, 72, 153);
+    --accent-color: rgb(249, 191, 36);
+    --success-color: rgb(16, 185, 129);
+    --error-color: rgb(239, 68, 68);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* Smooth transitions */
+input,
+textarea,
+button,
+.star {
+    transition: all 0.2s ease;
+}
+
+/* Focus states */
+input:focus,
+textarea:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: var(--primary-color);
+}
+
+/* Loading animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Pulse animation for highlights */
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Smooth scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Backdrop blur support */
+@supports (backdrop-filter: blur(10px)) {
+    .backdrop-blur-xl {
+        backdrop-filter: blur(10px);
+    }
+}
+
+/* Print styles */
+@media print {
+    body {
+        background: white;
+    }
+
+    .bg-gradient-to-br {
+        background: white !important;
+    }
+
+    header {
+        box-shadow: none;
+    }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+    body {
+        color-scheme: dark;
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+    body {
+        font-size: 16px;
+    }
+
+    .text-3xl {
+        font-size: 1.875rem;
+    }
+
+    .text-2xl {
+        font-size: 1.5rem;
+    }
+
+    .p-8 {
+        padding: 1.5rem;
+    }
+
+    .grid {
+        gap: 1rem;
+    }
+}
