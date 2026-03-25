@@ -1,19 +1,27 @@
 import subprocess
 import os
+import io
 import base64
 import uuid
 import json
 import re
 import traceback
-import sqlite3
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from database import init_database, create_user, get_user, save_chat_message, get_chat_history, get_user_chat_sessions, delete_chat_session, rename_chat_session, create_assignment, get_assignments_for_class, get_assignment, delete_assignment, create_submission, get_submissions_for_assignment, get_submission_for_user, get_user_by_username, assign_teacher_to_class, add_student_to_class, get_teachers_for_school, get_students_for_school, get_unique_school_names, get_student_usernames_for_school, get_unique_class_names_for_school, get_teacher_usernames_for_school, create_homework, get_homework_for_user, delete_homework, toggle_homework_status, create_subject, get_subjects, delete_subject, get_single_homework, delete_old_completed_homework, update_homework, get_subject_id_by_name, delete_all_homework, add_memory, get_memories, delete_memory, delete_memory_by_content, set_math_solver_status, get_math_solver_status, update_chat_message_worksheet, update_chat_session_subject, get_unique_chat_subjects, get_chat_sessions_by_subject, get_all_previous_chats_summaries, get_session_name, get_first_login_status, set_first_login_status
+from database import (
+    init_database,
+    create_assignment, get_assignments_for_class, get_assignment, delete_assignment,
+    create_submission, get_submissions_for_assignment, get_submission_for_user,
+)
+import user_storage as us
 
 load_dotenv()
+
+# Migrate existing SQLite data to file-based storage (runs once)
+us.migrate_from_sqlite()
 
 # Global tracking for active generation sessions
 # track active streaming responses per chat session.  
@@ -54,7 +62,7 @@ def german_date_filter(date_str):
 
 @app.route('/api/schools')
 def get_schools():
-    schools = get_unique_school_names()
+    schools = us.get_unique_school_names()
     return jsonify(schools)
 
 @app.route('/api/students')
@@ -62,7 +70,7 @@ def get_students():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
         return jsonify([])
     school = session.get('school')
-    students = get_student_usernames_for_school(school)
+    students = us.get_student_usernames_for_school(school)
     return jsonify(students)
 
 @app.route('/api/classes')
@@ -70,7 +78,7 @@ def get_classes():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
         return jsonify([])
     school = session.get('school')
-    classes = get_unique_class_names_for_school(school)
+    classes = us.get_unique_class_names_for_school(school)
     return jsonify(classes)
 
 @app.route('/api/teachers')
@@ -78,34 +86,29 @@ def get_teachers():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
         return jsonify([])
     school = session.get('school')
-    teachers = get_teacher_usernames_for_school(school)
+    teachers = us.get_teacher_usernames_for_school(school)
     return jsonify(teachers)
 
 @app.route('/api/chat-subjects')
 def api_get_chat_subjects():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    user_id = session['user_id']
-    subjects = get_unique_chat_subjects(user_id)
+    subjects = us.get_unique_chat_subjects(session['user_id'])
     return jsonify(subjects)
 
 @app.route('/api/chat-sessions-by-subject')
 def api_get_chat_sessions_by_subject():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    user_id = session['user_id']
     subject = request.args.get('subject')
-    
     if not subject:
         return jsonify({'error': 'Betreff ist erforderlich'}), 400
-        
-    sessions = get_chat_sessions_by_subject(user_id, subject)
+    sessions = us.get_chat_sessions_by_subject(session['user_id'], subject)
     return jsonify(sessions)
 
-# Initialize database
+# Initialize databases
 init_database()
+us._ensure_users_dir()
 
 # Ensure sheets directory exists
 if not os.path.exists('sheets'):
@@ -118,6 +121,7 @@ if not os.path.exists('uploads'):
 BASE_URL = os.getenv("BASE_URL", "https://openrouter.ai/api/v1")
 MODEL = os.getenv("MODEL", "google/gemma-3-27b-it:free")
 API_KEY = os.getenv("API_KEY")
+RATING_IN_MAIN_PAGE = os.getenv("RATING_IN_MAIN_PAGE", "true").lower() not in ("false", "0", "no")
 
 
 client = OpenAI(
@@ -153,9 +157,9 @@ def login_post():
     if not username or not password:
         return render_template('login.html', error='Alle Felder sind erforderlich.')
 
-    user = get_user(username, password)
+    user = us.get_user(username, password)
     if user:
-        session['user_id'] = user['id']
+        session['user_id'] = user['uuid']
         session['username'] = user['username']
         session['user_type'] = user['user_type']
         session['class_name'] = user['class_name']
@@ -189,23 +193,22 @@ def register_post():
     if password != password_confirm:
         return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
 
-    if not create_user(username, password, user_type, school):
+    if not us.create_user(username, password, user_type, school):
         if user_type == 'it-admin':
             return render_template('register.html', error='Ein IT-Admin für diese Schule existiert bereits.')
         else:
             return render_template('register.html', error='Benutzername bereits vergeben.')
-    
+
     # Automatically log in the user after registration
-    user = get_user_by_username(username)
+    user = us.get_user_by_username(username)
     if user:
-        session['user_id'] = user['id']
+        session['user_id'] = user['uuid']
         session['username'] = user['username']
         session['user_type'] = user['user_type']
         session['class_name'] = user['class_name']
         session['school'] = user['school']
         return redirect(url_for('index'))
     else:
-        # This should not happen if create_user was successful
         return redirect(url_for('login'))
 
 @app.route('/logout')
@@ -219,10 +222,8 @@ def delete_chat_route(session_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    user_id = session['user_id']
-    delete_chat_session(user_id, session_id)
+    us.delete_chat_session(session['user_id'], session_id)
 
-    # If the deleted chat is the current one, clear it from session
     if session.get('chat_session_id') == session_id:
         session.pop('chat_session_id', None)
 
@@ -233,14 +234,13 @@ def rename_chat_route(session_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
 
-    user_id = session['user_id']
     data = request.get_json()
     new_name = data.get('new_name')
 
     if not new_name:
         return jsonify({'error': 'Neuer Name ist erforderlich'}), 400
 
-    if rename_chat_session(user_id, session_id, new_name):
+    if us.rename_chat_session(session['user_id'], session_id, new_name):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Umbenennen des Chats'}), 500
@@ -250,11 +250,10 @@ def new_chat():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
 
-    # Create new chat session
     new_session_id = str(uuid.uuid4())
     session['chat_session_id'] = new_session_id
-    
-    # Clear cached image from session and filesystem
+
+    # Clear cached image
     filename = session.pop('cached_image_filename', None)
     if filename:
         try:
@@ -262,9 +261,11 @@ def new_chat():
         except OSError as e:
             print(f"Error deleting cached image: {e}")
 
-    # Insert welcome message to persist session
-    save_chat_message(session['user_id'], new_session_id, 'assistant', 'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!', session_name='Neuer Chat')
-
+    us.save_chat_message(
+        session['user_id'], new_session_id, 'assistant',
+        'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!',
+        session_name='Neuer Chat'
+    )
     return jsonify({'session_id': new_session_id})
 
 @app.route('/ask')
@@ -299,32 +300,30 @@ def ask():
         except Exception as e:
             print(f"Error reading cached image: {e}")
 
-    # Determine user_id (0 for guests)
-    db_user_id = user_id if user_id else 0
-
     if not chat_session_id:
         chat_session_id = str(uuid.uuid4())
         session['chat_session_id'] = chat_session_id
 
-    # Save user message to database
+    # Save user message
     img_data = None
     if cached_image:
         img_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
-    
-    save_chat_message(db_user_id, chat_session_id, 'user', question, image_data=img_data)
+
+    if user_id:
+        us.save_chat_message(user_id, chat_session_id, 'user', question, image_data=img_data)
 
     # Get existing chat history and other context
     if user_id:
-        existing_chat_history = get_chat_history(user_id, chat_session_id)
+        existing_chat_history = us.get_chat_history(user_id, chat_session_id)
         current_chat_subject = existing_chat_history[0].get('chat_subject') if existing_chat_history else None
-        earlier_chat_summaries = get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
-        current_homework = get_homework_for_user(user_id)[:15]
-        current_subjects = get_subjects(user_id)
-        user_memories = get_memories(user_id)
+        earlier_chat_summaries = us.get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
+        current_homework = us.get_homework_for_user(user_id)[:15]
+        current_subjects = us.get_subjects(user_id)
+        user_memories = us.get_memories(user_id)
         memories_text = "\n".join([f"- {m['content']}" for m in user_memories])
-        math_solver_enabled = get_math_solver_status(user_id)
+        math_solver_enabled = us.get_math_solver_status(user_id)
     else:
-        existing_chat_history = get_chat_history(0, chat_session_id)
+        existing_chat_history = []
         current_chat_subject = None
         earlier_chat_summaries = []
         current_homework = []
@@ -376,7 +375,7 @@ def ask():
             conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide stillschweigend über das Fach mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[FACH]\"}</action>. Erwähne dies NICHT im Text."
             
             if user_id:
-                current_name = get_session_name(user_id, chat_session_id)
+                current_name = us.get_session_name(user_id, chat_session_id)
                 if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
                     conversation_context += "\n2. TITEL: Sende <action>{\"type\": \"chat_naming\", \"title\": \"[TITEL]\"}</action> stillschweigend."
 
@@ -461,8 +460,8 @@ def ask():
                         final_error = f"❌ Fehler bei der KI-Anfrage: {api_error}"
                         print(f"API Error: {api_error}")
                     
-                    # In DB speichern
-                    save_chat_message(db_user_id, chat_session_id, 'assistant', final_error, chat_subject=current_chat_subject)
+                    if user_id:
+                        us.save_chat_message(user_id, chat_session_id, 'assistant', final_error, chat_subject=current_chat_subject)
                     yield from yield_sse(final_error)
                     return
 
@@ -496,39 +495,39 @@ def ask():
                         if res.get('type') == 'homework_action':
                             action, hw_id = res.get('action'), res.get('id')
                             s_name = res.get('subject_name', '').strip()
-                            s_id = get_subject_id_by_name(user_id, s_name) if s_name else None
+                            s_id = us.get_subject_id_by_name(user_id, s_name) if s_name else None
                             if s_name and s_id is None:
-                                s_id = create_subject(user_id, s_name)
-                                if s_id is False: s_id = get_subject_id_by_name(user_id, s_name)
+                                s_id = us.create_subject(user_id, s_name)
+                                if s_id is False: s_id = us.get_subject_id_by_name(user_id, s_name)
                             iso_due_date = convert_to_iso_date(res.get('due_date'))
-                            
+
                             if action == 'create':
-                                create_homework(user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
+                                us.create_homework(user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
                                 homework_results.append(f"'{res.get('title')}' erstellt")
                             elif action == 'update' and hw_id:
-                                update_homework(hw_id, user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
+                                us.update_homework(hw_id, user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
                                 homework_results.append(f"'{res.get('title')}' aktualisiert")
                             elif action == 'toggle' and hw_id:
-                                toggle_homework_status(hw_id, user_id)
+                                us.toggle_homework_status(hw_id, user_id)
                             elif action == 'delete' and hw_id:
-                                delete_homework(hw_id)
+                                us.delete_homework(hw_id, user_id)
                         elif res.get('type') == 'worksheet_creation':
-                             md_content = res.get('content')
+                            md_content = res.get('content')
                         elif res.get('type') == 'memory_action':
                             content, act = res.get('content'), res.get('action', 'add')
                             if content:
-                                if act == 'add': add_memory(user_id, content)
-                                elif act == 'delete': delete_memory_by_content(user_id, content)
+                                if act == 'add': us.add_memory(user_id, content)
+                                elif act == 'delete': us.delete_memory_by_content(user_id, content)
                         elif res.get('type') == 'set_chat_subject':
                             subject = res.get('subject')
                             if subject:
-                                update_chat_session_subject(user_id, chat_session_id, subject)
+                                us.update_chat_session_subject(user_id, chat_session_id, subject)
                                 current_chat_subject = subject
                                 if not client_disconnected: yield from yield_sse(f"SESSION_SUBJECT:{subject}")
                         elif res.get('type') == 'chat_naming':
                             new_title = res.get('title')
                             if user_id and new_title:
-                                rename_chat_session(user_id, chat_session_id, new_title)
+                                us.rename_chat_session(user_id, chat_session_id, new_title)
                                 if not client_disconnected: yield from yield_sse(f"SESSION_TITLE:{new_title}")
                 except Exception: continue
 
@@ -558,11 +557,14 @@ def ask():
             display_text = re.sub(r'\s+', ' ', display_text).strip()
 
             # --- SOFORTIGES SPEICHERN DER ANTWORT ---
-            assistant_msg_id = None
-            if display_text or md_content:
+            assistant_msg_idx = None
+            if user_id and (display_text or md_content):
                 initial_ws = 'PENDING' if md_content else None
-                assistant_msg_id = save_chat_message(db_user_id, chat_session_id, 'assistant', display_text, worksheet_filename=initial_ws, chat_subject=current_chat_subject)
-                print(f"DEBUG: Message saved to DB for session {chat_session_id}")
+                assistant_msg_idx = us.save_chat_message(
+                    user_id, chat_session_id, 'assistant', display_text,
+                    worksheet_filename=initial_ws, chat_subject=current_chat_subject
+                )
+                print(f"DEBUG: Message saved for session {chat_session_id}")
 
             # --- WORKSHEET GENERATION ---
             pdf_basename = None
@@ -584,8 +586,8 @@ def ask():
                     if has_context and not client_disconnected: yield from yield_sse("Fehler bei der PDF-Erstellung.")
                     if os.path.exists(md_filename): pdf_basename = os.path.basename(md_filename)
 
-                if assistant_msg_id and pdf_basename:
-                    update_chat_message_worksheet(assistant_msg_id, pdf_basename)
+                if user_id and assistant_msg_idx is not None and pdf_basename:
+                    us.update_chat_message_worksheet(user_id, chat_session_id, assistant_msg_idx, pdf_basename)
 
             if not client_disconnected:
                 if homework_results: yield from yield_sse("HOMEWORK_UPDATED")
@@ -595,7 +597,8 @@ def ask():
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
             error_msg = f"❌ Ein unerwarteter Fehler ist aufgetreten: {str(e)}"
-            save_chat_message(db_user_id, chat_session_id, 'assistant', error_msg, chat_subject=current_chat_subject)
+            if user_id:
+                us.save_chat_message(user_id, chat_session_id, 'assistant', error_msg, chat_subject=current_chat_subject)
             if not client_disconnected: yield from yield_sse(error_msg)
         finally:
             if chat_session_id in generating_sessions:
@@ -619,60 +622,50 @@ def check_chat_status():
 def get_user_chat_sessions_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    user_id = session['user_id']
-    sessions = get_user_chat_sessions(user_id)
+    sessions = us.get_user_chat_sessions(session['user_id'])
     return jsonify(sessions)
 
 @app.route('/load-chat/<session_id>', methods=['POST'])
 def load_chat(session_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-
-    user_id = session['user_id']
-
-    # Load chat history
-    chat_history = get_chat_history(user_id, session_id)
-
-    # Set current session
+    chat_history = us.get_chat_history(session['user_id'], session_id)
     session['chat_session_id'] = session_id
-
     return jsonify({'chat_history': chat_history})
 
 @app.route('/privacy-policy')
 def privacy_policy():
-    return render_template('legal/privacy_policy_page.html')
+    return render_template('legal/privacy_policy_page.html', is_logged_in='user_id' in session)
 
 @app.route('/impressum')
 def impressum():
-    return render_template('legal/impressum_page.html')
+    return render_template('legal/impressum_page.html', is_logged_in='user_id' in session)
 
 @app.route('/agb')
 def agb():
-    return render_template('legal/agb_page.html')
+    return render_template('legal/agb_page.html', is_logged_in='user_id' in session)
 
 @app.route('/get-chat-history', methods=['GET'])
 def get_current_chat_history():
-    user_id = session.get('user_id', 0)
+    user_id = session.get('user_id')
     chat_session_id = session.get('chat_session_id')
 
-    if not chat_session_id:
+    if not chat_session_id or not user_id:
         return jsonify({'chat_history': []})
 
-    chat_history = get_chat_history(user_id, chat_session_id)
+    chat_history = us.get_chat_history(user_id, chat_session_id)
     return jsonify({'chat_history': chat_history})
 
 @app.route('/api/check-worksheet-status')
 def check_worksheet_status():
-    user_id = session.get('user_id', 0)
+    user_id = session.get('user_id')
     chat_session_id = session.get('chat_session_id')
-    
-    if not chat_session_id:
+
+    if not chat_session_id or not user_id:
         return jsonify({'generating': False})
-    
-    history = get_chat_history(user_id, chat_session_id)
+
+    history = us.get_chat_history(user_id, chat_session_id)
     is_generating = any(msg.get('worksheet_filename') == 'PENDING' for msg in history)
-    
     return jsonify({'generating': is_generating})
 
 @app.route('/download-worksheet/<filename>')
@@ -784,9 +777,8 @@ def index():
     if user_id:
         delete_old_completed_homework(user_id)
 
-    # Get user's chat sessions (user_id=0 for guests)
-    db_user_id = user_id if user_id else 0
-    user_sessions = get_user_chat_sessions(db_user_id)
+    # Get user's chat sessions
+    user_sessions = us.get_user_chat_sessions(user_id) if user_id else []
 
     # Get assignments
     assignments = []
@@ -795,14 +787,14 @@ def index():
         assignments = get_assignments_for_class(class_name, session.get('school'))
 
     # Get homework
-    homework = get_homework_for_user(user_id) if user_id else []
+    homework = us.get_homework_for_user(user_id) if user_id else []
 
     # First login check
     is_first_login = False
     if user_id:
-        is_first_login = get_first_login_status(user_id)
+        is_first_login = us.get_first_login_status(user_id)
         if is_first_login:
-            set_first_login_status(user_id, 0)
+            us.set_first_login_status(user_id, False)
 
     return render_template('index.html',
                          user_type=user_type,
@@ -813,7 +805,8 @@ def index():
                          current_session_id=session.get('chat_session_id'),
                          assignments=assignments,
                          homework=homework,
-                         is_first_login=is_first_login)
+                         is_first_login=is_first_login,
+                         rating_in_main_page=RATING_IN_MAIN_PAGE)
 
 @app.route('/admin')
 def admin_dashboard():
@@ -821,8 +814,8 @@ def admin_dashboard():
         return redirect(url_for('login'))
 
     school = session.get('school')
-    teachers = get_teachers_for_school(school)
-    students = get_students_for_school(school)
+    teachers = us.get_teachers_for_school(school)
+    students = us.get_students_for_school(school)
 
     return render_template('admin_dashboard.html', teachers=teachers, students=students, school=school)
 
@@ -835,8 +828,8 @@ def assign_teacher_route():
     class_name = request.form.get('class_name')
 
     if teacher_username and class_name:
-        assign_teacher_to_class(teacher_username, class_name)
-    
+        us.assign_teacher_to_class(teacher_username, class_name)
+
     return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/add-student', methods=['POST'])
@@ -848,7 +841,7 @@ def add_student_route():
     class_name = request.form.get('class_name')
 
     if student_username and class_name:
-        add_student_to_class(student_username, class_name)
+        us.add_student_to_class(student_username, class_name)
 
     return redirect(url_for('admin_dashboard'))
 
@@ -934,26 +927,23 @@ def create_homework_route():
         title = request.form.get('title')
         due_date = request.form.get('due_date')
         notes = request.form.get('notes')
-        subject_id = request.form.get('subject_id')
+        subject_id = request.form.get('subject_id') or None
 
         if not title:
-            return render_template('create_homework.html', error='Titel ist erforderlich.', subjects=get_subjects(user_id))
-        
-        # Convert empty string to None for subject_id
-        if subject_id == '':
-            subject_id = None
+            return render_template('create_homework.html', error='Titel ist erforderlich.', subjects=us.get_subjects(user_id))
 
-        create_homework(user_id, title, due_date, notes, subject_id)
+        us.create_homework(user_id, title, due_date, notes, subject_id)
         return redirect(url_for('index'))
 
-    return render_template('create_homework.html', subjects=get_subjects(user_id))
+    prefill_date = request.args.get('due_date', '')
+    return render_template('create_homework.html', subjects=us.get_subjects(user_id), prefill_date=prefill_date)
 
 @app.route('/view-homework/<homework_id>')
 def view_homework(homework_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    homework = get_single_homework(homework_id)
+    homework = us.get_single_homework(homework_id, session['user_id'])
     if not homework:
         return redirect(url_for('index'))
 
@@ -963,10 +953,8 @@ def view_homework(homework_id):
 def calendar_route():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
-    # We reuse get_homework_for_user to get all homework with due dates
-    homework = get_homework_for_user(session['user_id'])
-    
+
+    homework = us.get_homework_for_user(session['user_id'])
     return render_template('calendar.html', homework=homework)
 
 @app.route('/edit-homework/<homework_id>', methods=['GET', 'POST'])
@@ -975,7 +963,7 @@ def edit_homework_route(homework_id):
         return redirect(url_for('login'))
 
     user_id = session['user_id']
-    homework = get_single_homework(homework_id)
+    homework = us.get_single_homework(homework_id, user_id)
 
     if not homework or homework['user_id'] != user_id:
         return redirect(url_for('index'))
@@ -984,46 +972,40 @@ def edit_homework_route(homework_id):
         title = request.form.get('title')
         due_date = request.form.get('due_date')
         notes = request.form.get('notes')
-        subject_id = request.form.get('subject_id')
+        subject_id = request.form.get('subject_id') or None
 
         if not title:
-            return render_template('edit_homework.html', homework=homework, subjects=get_subjects(user_id), error='Titel ist erforderlich.')
-        
-        if subject_id == '':
-            subject_id = None
+            return render_template('edit_homework.html', homework=homework, subjects=us.get_subjects(user_id), error='Titel ist erforderlich.')
 
-        update_homework(homework_id, user_id, title, due_date, notes, subject_id)
+        us.update_homework(homework_id, user_id, title, due_date, notes, subject_id)
         return redirect(url_for('view_homework', homework_id=homework_id))
 
-    return render_template('edit_homework.html', homework=homework, subjects=get_subjects(user_id))
+    return render_template('edit_homework.html', homework=homework, subjects=us.get_subjects(user_id))
 
 @app.route('/toggle-homework/<homework_id>', methods=['POST'])
 def toggle_homework_route(homework_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    toggle_homework_status(homework_id, session['user_id'])
+    us.toggle_homework_status(homework_id, session['user_id'])
     return jsonify({'success': True})
 
 @app.route('/delete-homework/<homework_id>', methods=['POST'])
-def toggle_homework_status_route(homework_id):
-    # This was a duplicate or misnamed route in previous version, fixing to delete
+def delete_homework_route(homework_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    delete_homework(homework_id)
+    us.delete_homework(homework_id, session['user_id'])
     return jsonify({'success': True})
 
 @app.route('/create-subject', methods=['POST'])
 def create_subject_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
+
     name = request.json.get('name')
     if not name:
         return jsonify({'error': 'Name ist erforderlich'}), 400
-        
-    subject_id = create_subject(session['user_id'], name)
+
+    subject_id = us.create_subject(session['user_id'], name)
     if subject_id:
         return jsonify({'success': True, 'subject_id': subject_id, 'name': name})
     else:
@@ -1033,8 +1015,8 @@ def create_subject_route():
 def delete_subject_route(subject_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-        
-    if delete_subject(subject_id, session['user_id']):
+
+    if us.delete_subject(subject_id, session['user_id']):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Löschen'}), 500
@@ -1079,32 +1061,31 @@ def clear_cache():
 def get_user_memories_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    memories = get_memories(session['user_id'])
+    memories = us.get_memories(session['user_id'])
     return jsonify({'memories': memories})
 
 @app.route('/api/memories', methods=['POST'])
 def add_user_memory_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
+
     data = request.get_json()
     content = data.get('content')
-    
+
     if not content:
         return jsonify({'error': 'Inhalt ist erforderlich'}), 400
-        
-    if add_memory(session['user_id'], content):
+
+    if us.add_memory(session['user_id'], content):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Speichern oder Duplikat'}), 500
 
-@app.route('/api/memories/<int:memory_id>', methods=['DELETE'])
+@app.route('/api/memories/<memory_id>', methods=['DELETE'])
 def delete_user_memory_route(memory_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    if delete_memory(memory_id, session['user_id']):
+
+    if us.delete_memory(memory_id, session['user_id']):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Löschen'}), 500
@@ -1113,22 +1094,54 @@ def delete_user_memory_route(memory_id):
 def get_math_solver_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
-    status = get_math_solver_status(session['user_id'])
+    status = us.get_math_solver_status(session['user_id'])
     return jsonify({'enabled': status})
 
 @app.route('/api/settings/math-solver', methods=['POST'])
 def set_math_solver_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Nicht angemeldet'}), 401
-    
+
     data = request.get_json()
     enabled = data.get('enabled', False)
-    
-    if set_math_solver_status(session['user_id'], enabled):
+
+    if us.set_math_solver_status(session['user_id'], enabled):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Fehler beim Speichern'}), 500
+
+@app.route('/api/account/download-data', methods=['GET'])
+def download_user_data():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+
+    data = us.export_user_data(session['user_id'])
+    # Remove password from export for safety
+    if data.get('user'):
+        data['user'].pop('password', None)
+
+    json_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
+    import io
+    buf = io.BytesIO(json_bytes)
+    buf.seek(0)
+    username = session.get('username', 'user')
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"learn-ai-daten-{username}.json",
+        mimetype='application/json'
+    )
+
+@app.route('/api/account/delete', methods=['POST'])
+def delete_account():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Nicht angemeldet'}), 401
+
+    user_uuid = session['user_id']
+    if us.delete_user(user_uuid):
+        session.clear()
+        return jsonify({'success': True})
+    return jsonify({'error': 'Fehler beim Löschen des Kontos'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -281,10 +281,12 @@
                 <button id="new-chat-btn" class="flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors duration-300" title="Neuer Chat">
                     <span class="material-symbols-outlined text-lg">add_comment</span>
                 </button>
+                {% if rating_in_main_page %}
                 <a href="https://rate.l-ai.pro" target="_blank" class="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-600 rounded-xl hover:bg-yellow-200 transition-colors duration-300" title="Bewerten">
                     <span class="material-symbols-outlined text-lg">star</span>
                     <span class="hidden md:inline text-sm font-medium">Bewerten</span>
                 </a>
+                {% endif %}
                 <button id="start-tutorial-btn" class="hidden flex items-center justify-center space-x-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-colors duration-300" title="Tutorial starten">
                     <span class="material-symbols-outlined text-lg">help</span>
                     <span class="hidden md:inline text-sm font-medium">Tutorial</span>
@@ -297,7 +299,7 @@
                     <span class="material-symbols-outlined text-white text-lg">neurology</span>
                 </div>
                 <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
-                    Intelligenter Lernassistent
+                    Learn-AI
                 </h1>
             </div>
 
@@ -610,6 +612,50 @@
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
+
+                            {% if not rating_in_main_page %}
+                            <!-- Rate Button (only shown in settings when RATING_IN_MAIN_PAGE=false) -->
+                            <a href="https://rate.l-ai.pro" target="_blank" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-yellow-200 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 group-hover:bg-yellow-500 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">star</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Learn-AI bewerten</h3>
+                                        <p class="text-sm text-gray-500">Gib dein Feedback zu Learn-AI ab.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-gray-400 group-hover:text-yellow-500">open_in_new</span>
+                            </a>
+                            {% endif %}
+
+                            <!-- Download Data -->
+                            <button id="download-data-btn" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex items-center justify-between hover:border-green-200 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">download</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-gray-800">Daten herunterladen</h3>
+                                        <p class="text-sm text-gray-500">Exportiere alle deine Daten als JSON-Datei.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-gray-400 group-hover:text-green-600">chevron_right</span>
+                            </button>
+
+                            <!-- Delete Account -->
+                            <button id="delete-account-btn" class="w-full bg-white rounded-2xl shadow-sm border border-red-100 p-6 flex items-center justify-between hover:border-red-300 transition-all group text-left">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined text-2xl">person_remove</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-red-700">Konto löschen</h3>
+                                        <p class="text-sm text-gray-500">Löscht dein Konto und alle zugehörigen Daten unwiderruflich.</p>
+                                    </div>
+                                </div>
+                                <span class="material-symbols-outlined text-red-300 group-hover:text-red-600">chevron_right</span>
+                            </button>
                         </div>
 
                         <!-- Privacy Section (Hidden by default) -->
@@ -734,6 +780,29 @@
 
     <input type="hidden" id="user-type" value="{{ user_type }}">
     <input type="hidden" id="is-first-login" value="{{ is_first_login }}">
+
+    <!-- Delete Account Confirmation Modal -->
+    <div id="delete-account-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[70] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-red-100 mb-4">
+                    <span class="material-symbols-outlined text-red-600 text-3xl">person_remove</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Konto wirklich löschen?</h3>
+                <p class="text-sm text-gray-500 mb-6">
+                    Diese Aktion löscht dein Konto und <strong>alle</strong> zugehörigen Daten (Chats, Hausaufgaben, Erinnerungen) unwiderruflich.
+                </p>
+            </div>
+            <div class="flex space-x-3">
+                <button id="cancel-delete-account-btn" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium">
+                    Abbrechen
+                </button>
+                <button id="confirm-delete-account-btn" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
+                    Endgültig löschen
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Tutorial Modal für neue Nutzer -->
     <div id="tutorial-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

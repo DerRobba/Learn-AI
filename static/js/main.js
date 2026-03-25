@@ -1076,6 +1076,51 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const mathSolverToggle = document.getElementById('math-solver-toggle');
 
+    // Download Data
+    const downloadDataBtn = document.getElementById('download-data-btn');
+    if (downloadDataBtn) {
+        downloadDataBtn.addEventListener('click', () => {
+            window.location.href = '/api/account/download-data';
+        });
+    }
+
+    // Delete Account
+    const deleteAccountBtn = document.getElementById('delete-account-btn');
+    const deleteAccountModal = document.getElementById('delete-account-modal');
+    const cancelDeleteAccountBtn = document.getElementById('cancel-delete-account-btn');
+    const confirmDeleteAccountBtn = document.getElementById('confirm-delete-account-btn');
+
+    if (deleteAccountBtn && deleteAccountModal) {
+        deleteAccountBtn.addEventListener('click', () => {
+            deleteAccountModal.classList.remove('hidden');
+        });
+        cancelDeleteAccountBtn.addEventListener('click', () => {
+            deleteAccountModal.classList.add('hidden');
+        });
+        confirmDeleteAccountBtn.addEventListener('click', () => {
+            confirmDeleteAccountBtn.disabled = true;
+            confirmDeleteAccountBtn.textContent = 'Wird gelöscht...';
+            fetch('/api/account/delete', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = '/login';
+                    } else {
+                        alert('Fehler beim Löschen: ' + (data.error || 'Unbekannter Fehler'));
+                        deleteAccountModal.classList.add('hidden');
+                        confirmDeleteAccountBtn.disabled = false;
+                        confirmDeleteAccountBtn.textContent = 'Endgültig löschen';
+                    }
+                })
+                .catch(() => {
+                    alert('Netzwerkfehler. Bitte versuche es erneut.');
+                    deleteAccountModal.classList.add('hidden');
+                    confirmDeleteAccountBtn.disabled = false;
+                    confirmDeleteAccountBtn.textContent = 'Endgültig löschen';
+                });
+        });
+    }
+
     if (sidebarLegalBtn) {
         sidebarLegalBtn.addEventListener('click', () => {
             if (window.innerWidth < 768) {
