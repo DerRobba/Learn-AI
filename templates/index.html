@@ -473,7 +473,7 @@
                     {% endif %}
                     
                     <!-- Legal Button (Always visible) -->
-                    <button id="sidebar-legal-btn" class="w-full flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                    <button id="sidebar-legal-btn" data-guest="{{ 'true' if is_guest else 'false' }}" class="w-full flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                         <span class="material-symbols-outlined">shield</span>
                         <span class="text-sm font-medium">Rechtliches</span>
                     </button>

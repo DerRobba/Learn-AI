@@ -1123,6 +1123,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (sidebarLegalBtn) {
         sidebarLegalBtn.addEventListener('click', () => {
+            if (sidebarLegalBtn.dataset.guest === 'true') {
+                // Guests: navigate to impressum directly (no settings panel in history)
+                window.location.href = '/impressum';
+                return;
+            }
             if (window.innerWidth < 768) {
                 toggleSidebar(); // Close sidebar on mobile
             }
