@@ -8,6 +8,8 @@ venv/
 # App spezifisch
 .env
 users.db
+assignments.db
+users/
 sheets/*.pdf
 sheets/*.md
 uploads/
