@@ -775,7 +775,7 @@ def index():
     
     # Cleanup old completed homework (24h) if logged in
     if user_id:
-        us.delete_old_completed_homework(user_id)
+        delete_old_completed_homework(user_id)
 
     # Get user's chat sessions
     user_sessions = us.get_user_chat_sessions(user_id) if user_id else []
