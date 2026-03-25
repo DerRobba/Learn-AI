@@ -126,43 +126,59 @@
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 
                 const cell = document.createElement('div');
-                cell.className = 'calendar-day p-2 border-r border-b border-gray-100 relative hover:bg-gray-50 transition-colors cursor-pointer';
-                
+                cell.className = 'calendar-day p-2 border-r border-b border-gray-100 relative hover:bg-purple-50 transition-colors cursor-pointer group';
+
                 const dayNumber = document.createElement('div');
                 dayNumber.className = 'text-sm font-medium text-gray-500 mb-1';
                 dayNumber.textContent = day;
-                
+
                 // Highlight today
                 const today = new Date();
                 if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
                     dayNumber.className = 'w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-sm font-bold mb-1';
                 }
-                
+
                 cell.appendChild(dayNumber);
 
                 // Add events for this day
                 const daysEvents = events.filter(e => e.date === dateStr);
-                
+
                 const eventsContainer = document.createElement('div');
                 eventsContainer.className = 'flex flex-col gap-1 overflow-hidden';
-                
+
                 daysEvents.forEach(event => {
                     const eventEl = document.createElement('a');
                     eventEl.href = `/view-homework/${event.id}`;
                     eventEl.className = `text-xs px-2 py-1 rounded truncate block ${event.completed ? 'bg-green-100 text-green-700 line-through' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`;
                     eventEl.title = event.title + (event.subject ? ` (${event.subject})` : '');
-                    
+                    eventEl.addEventListener('click', e => e.stopPropagation());
+
                     let content = '';
                     if (event.subject) {
                         content += `<span class="font-bold mr-1">${event.subject.substring(0, 3)}</span>`;
                     }
                     content += event.title;
-                    
+
                     eventEl.innerHTML = content;
                     eventsContainer.appendChild(eventEl);
                 });
-                
+
                 cell.appendChild(eventsContainer);
+
+                // "+" add button shown on hover
+                const addBtn = document.createElement('a');
+                addBtn.href = `/create-homework?due_date=${dateStr}`;
+                addBtn.className = 'absolute bottom-1 right-1 w-5 h-5 bg-purple-500 text-white rounded-full hidden group-hover:flex items-center justify-center text-xs font-bold leading-none hover:bg-purple-700 transition-colors';
+                addBtn.title = 'Hausaufgabe für diesen Tag erstellen';
+                addBtn.textContent = '+';
+                addBtn.addEventListener('click', e => e.stopPropagation());
+                cell.appendChild(addBtn);
+
+                // Click on day → create homework for that day
+                cell.addEventListener('click', () => {
+                    window.location.href = `/create-homework?due_date=${dateStr}`;
+                });
+
                 calendarBody.appendChild(cell);
             }
         }

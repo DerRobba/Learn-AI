@@ -20,9 +20,9 @@
 <body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen py-8 px-4 md:py-12">
     <div class="max-w-4xl mx-auto">
         <!-- Back Button -->
-        <a href="/" class="inline-flex items-center space-x-2 text-white mb-6 hover:translate-x-[-4px] transition-transform duration-300">
+        <a href="{{ '/' if is_logged_in else '/login' }}" class="inline-flex items-center space-x-2 text-white mb-6 hover:translate-x-[-4px] transition-transform duration-300">
             <span class="material-symbols-outlined">arrow_back</span>
-            <span class="font-medium">Zurück zur App</span>
+            <span class="font-medium">{{ 'Zurück zur App' if is_logged_in else 'Zurück zur Anmeldung' }}</span>
         </a>
 
         <!-- Content Card -->
