@@ -5,24 +5,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // interfering with subsequent worksheet requests.
     let currentEventSource = null;
     const userType = userTypeEl ? userTypeEl.value : '';
-    const isGuest = !userType || userType === 'None' || userType === '';
+    const isGuest = !userType || userType === 'None' || userType === '' || userType === 'guest';
+
+    // Session and Filter State (Declare early to avoid TDZ)
+    let allChatSessions = [];
+    let currentSessionId = null;
+    let currentFilterValue = 'all';
 
     const recordButton = document.getElementById('record-button');
     const chatHistory = document.getElementById('chat-history');
     const imageUploadButton = document.getElementById('image-upload-button');
     const imageInput = document.getElementById('image-input');
     const imagePreview = document.getElementById('image-preview');
-    const previewImage = document.getElementById('preview-image');
-    const analyzeButton = document.getElementById('analyze-image');
-    const cacheButton = document.getElementById('cache-image');
-    const removeButton = document.getElementById('remove-image');
-    const clearCacheButton = document.getElementById('clear-cache-button');
-    const cachedImageIndicator = document.getElementById('cached-image-indicator');
-    const newChatBtn = document.getElementById('new-chat-btn');
     const chatInput = document.getElementById('chat-input');
     const sendButton = document.getElementById('send-button');
-    
-    // Chat Subject Filter Elements
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const sidebarLegalBtn = document.getElementById('sidebar-legal-btn');
     const filterOpenBtn = document.getElementById('filter-open-btn');
     const closeFilterViewBtn = document.getElementById('close-filter-view-btn');
     const sidebarTabsContent = document.getElementById('sidebar-tabs-content');
@@ -143,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
             chatSessionsContainer.classList.remove('hidden');
             assignmentListContainer.classList.add('hidden');
             homeworkListContainer.classList.add('hidden');
-            chatSubjectFilterContainer.classList.remove('hidden'); // Show filter
+            if (filterOpenBtn) filterOpenBtn.classList.remove('hidden'); // Show filter
         });
     }
 
@@ -165,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
             assignmentListContainer.classList.remove('hidden');
             chatSessionsContainer.classList.add('hidden');
             homeworkListContainer.classList.add('hidden');
-            chatSubjectFilterContainer.classList.add('hidden'); // Hide filter
+            if (filterOpenBtn) filterOpenBtn.classList.add('hidden'); // Hide filter
         });
     }
 
@@ -187,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function() {
             homeworkListContainer.classList.remove('hidden');
             chatSessionsContainer.classList.add('hidden');
             assignmentListContainer.classList.add('hidden');
-            chatSubjectFilterContainer.classList.add('hidden'); // Hide filter
+            if (filterOpenBtn) filterOpenBtn.classList.add('hidden'); // Hide filter
         });
     }
 
@@ -587,23 +586,28 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 justify-end chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
-        
-        let imageHTML = '';
+
+        let imagesHTML = '';
         if (image) {
-            let imageUrl;
-            if (typeof image === 'string') {
-                imageUrl = image; // It's a base64 string from history
-            } else {
-                imageUrl = URL.createObjectURL(image); // It's a File object from upload
-            }
-            imageHTML = `<img src="${imageUrl}" class="mt-2 rounded-lg max-w-full h-auto shadow-sm">`;
+            const imageArray = Array.isArray(image) ? image : [image];
+            const gridClass = `image-grid image-grid-${Math.min(imageArray.length, 4)}`;
+            
+            imagesHTML = `<div class="${gridClass}">`;
+            imageArray.forEach(imgData => {
+                let imageUrl = imgData;
+                if (imgData instanceof File) {
+                    imageUrl = URL.createObjectURL(imgData);
+                }
+                imagesHTML += `<img src="${imageUrl}" class="rounded-lg shadow-sm cursor-pointer" onclick="showFullscreenImage(this.src)">`;
+            });
+            imagesHTML += `</div>`;
         }
 
         messageElement.innerHTML = `
             <div class="flex flex-col items-end max-w-[80%] md:max-w-md">
-                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm shadow-md">
-                    ${imageHTML}
-                    <p class="text-sm leading-relaxed">${message}</p>
+                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm shadow-md w-full">
+                    ${imagesHTML}
+                    ${message ? `<p class="text-sm leading-relaxed">${message}</p>` : ''}
                 </div>
                 <span class="text-xs text-gray-500 mt-1">Du • ${formatTime(time)}</span>
             </div>
@@ -615,6 +619,29 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(scrollToBottom, 100);
     }
 
+    // Fullscreen Image Functions
+    window.showFullscreenImage = function(src) {
+        const preview = document.getElementById('fullscreen-preview');
+        const img = document.getElementById('fullscreen-image');
+        if (preview && img) {
+            img.src = src;
+            preview.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent scrolling
+        }
+    };
+
+    window.closeFullscreenImage = function() {
+        const preview = document.getElementById('fullscreen-preview');
+        if (preview) {
+            preview.style.display = 'none';
+            document.body.style.overflow = ''; // Re-enable scrolling
+        }
+    };
+
+    // Close preview on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeFullscreenImage();
+    });
     function addBotMessage(message, timestamp = null, worksheet_filename = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message';
@@ -697,54 +724,53 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (imageInput) {
         imageInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    previewImage.src = e.target.result;
-                    uploadedImage = file;
-                    imagePreview.classList.remove('hidden');
-                    cacheImageOnServer(uploadedImage);
-                };
-                reader.readAsDataURL(file);
+            const files = event.target.files;
+            if (files && files.length > 0) {
+                Array.from(files).forEach(file => {
+                    if (file.type.startsWith('image/')) {
+                        cacheImageOnServer(file);
+                    }
+                });
+                // Reset input so the same file can be picked again
+                imageInput.value = '';
             }
-        });
-    }
-
-    if (removeButton) {
-        removeButton.addEventListener('click', () => {
-            uploadedImage = null;
-            previewImage.src = '';
-            imagePreview.classList.add('hidden');
-            imageInput.value = '';
-            clearImageCache();
         });
     }
 
     function sendMessage() {
         const message = chatInput.value.trim();
-        if (message || uploadedImage) {
-            addUserMessage(message, null, uploadedImage);
+        
+        // Collect all currently uploaded images from the preview area
+        const imageFiles = [];
+        if (imagePreview) {
+            const previewItems = imagePreview.querySelectorAll('[data-filename]');
+            previewItems.forEach(item => {
+                const img = item.querySelector('img');
+                if (img) imageFiles.push(img.src);
+            });
+        }
+
+        if (message || imageFiles.length > 0) {
+            // Only add UI message if there's actually something to send
+            addUserMessage(message, null, imageFiles);
             sendToServer(message);
             chatInput.value = '';
             chatInput.style.height = 'auto';
             
-            if (uploadedImage) {
-                // Manually clear UI state without triggering server cache clear
-                uploadedImage = null;
-                previewImage.src = '';
+            // Clear UI previews
+            if (imagePreview) {
                 imagePreview.classList.add('hidden');
-                imageInput.value = '';
-                cachedImageIndicator.classList.add('hidden');
+                const container = imagePreview.querySelector('.flex.gap-3');
+                if (container) container.innerHTML = '';
             }
+            
+            // Reset old single image state
+            uploadedImage = null;
+            if (imageInput) imageInput.value = '';
 
-            if (sendButton && recordButton) {
-                recordButton.classList.remove('hidden');
-                sendButton.classList.add('hidden');
-            }
+            updateSendButtonState();
 
-            // Refresh sidebar after a short delay to ensure DB has been updated by the /ask request
-            // This handles "lazy" chat creation (it appears only after first message)
+            // Refresh sidebar after a short delay
             setTimeout(loadAllChatSessionsAndRender, 1000);
         }
     }
@@ -753,38 +779,132 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('image', imageFile);
 
+        // Create a unique ID for this upload's preview and spinner
+        const uploadId = 'upload-' + Date.now();
+        
+        // Create preview element
+        const previewItem = document.createElement('div');
+        previewItem.className = 'relative w-20 h-20 flex-shrink-0 group';
+        previewItem.dataset.uploadId = uploadId;
+        previewItem.innerHTML = `
+            <div class="w-full h-full rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                <img class="w-full h-full object-cover opacity-50" src="${URL.createObjectURL(imageFile)}">
+                <div class="absolute inset-0 flex items-center justify-center bg-black/10">
+                    <span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span>
+                </div>
+            </div>
+        `;
+        
+        if (imagePreview) {
+            imagePreview.classList.remove('hidden');
+            const container = imagePreview.querySelector('.flex.gap-3') || imagePreview;
+            container.appendChild(previewItem);
+        }
+        
+        updateSendButtonState();
+
         fetch('/cache-image', {
             method: 'POST',
             body: formData
         })
         .then(response => response.json())
         .then(data => {
-            console.log(data.message);
-            cachedImageIndicator.classList.remove('hidden');
+            if (data.success) {
+                // Update preview with success state and delete button
+                previewItem.dataset.filename = data.filename;
+                previewItem.innerHTML = `
+                    <div class="w-full h-full rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+                        <img class="w-full h-full object-cover" src="${URL.createObjectURL(imageFile)}">
+                    </div>
+                    <button class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-20" 
+                            onclick="deleteCachedImage('${data.filename}', '${uploadId}')">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                `;
+            } else {
+                previewItem.remove();
+                addBotMessage("Fehler beim Hochladen: " + data.error);
+            }
         })
         .catch(error => {
             console.error('Error caching image:', error);
-            addBotMessage("Es gab ein Problem beim Zwischenspeichern des Bildes. Bitte versuche es später noch einmal.");
+            previewItem.remove();
+            addBotMessage("Es gab ein Problem beim Hochladen des Bildes.");
+        })
+        .finally(() => {
+            updateSendButtonState();
         });
     }
 
-    function clearImageCache() {
+    // Global function so it can be called from inline onclick
+    window.deleteCachedImage = function(filename, uploadId) {
+        fetch('/api/delete-cached-image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({filename: filename})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const el = document.querySelector(`[data-upload-id="${uploadId}"]`);
+                if (el) el.remove();
+                
+                // Hide preview container if empty
+                const container = imagePreview.querySelector('.flex.gap-3');
+                if (container && container.children.length === 0) {
+                    imagePreview.classList.add('hidden');
+                }
+                updateSendButtonState();
+            }
+        });
+    };
+
+    function updateSendButtonState() {
+        const hasText = chatInput && chatInput.value.trim().length > 0;
+        const hasImages = imagePreview && !imagePreview.classList.contains('hidden') && 
+                          imagePreview.querySelectorAll('[data-filename]').length > 0;
+        const isUploading = imagePreview && imagePreview.querySelector('.animate-spin');
+
+        if (sendButton) {
+            sendButton.disabled = isUploading || (!hasText && !hasImages);
+            
+            // Toggle between Microphone and Send icon
+            const icon = sendButton.querySelector('.material-symbols-outlined');
+            if (icon) {
+                if (hasText || hasImages) {
+                    icon.textContent = 'send';
+                    sendButton.classList.remove('bg-gray-100', 'text-gray-400');
+                    sendButton.classList.add('bg-blue-600', 'text-white');
+                } else {
+                    icon.textContent = 'mic';
+                    sendButton.classList.add('bg-gray-100', 'text-gray-400');
+                    sendButton.classList.remove('bg-blue-600', 'text-white');
+                }
+            }
+        }
+    }
+
+    if (chatInput) {
+        chatInput.addEventListener('input', updateSendButtonState);
+    }
+
+    window.clearImageCache = function() {
         fetch('/clear-cache', {
             method: 'POST'
         })
         .then(response => response.json())
         .then(data => {
-            console.log(data.message);
-            cachedImageIndicator.classList.add('hidden');
+            if (imagePreview) {
+                imagePreview.classList.add('hidden');
+                const container = imagePreview.querySelector('.flex.gap-3');
+                if (container) container.innerHTML = '';
+            }
+            updateSendButtonState();
         })
         .catch(error => {
             console.error('Error clearing cache:', error);
         });
     }
-
-    // Global variable to store all chat sessions
-    let allChatSessions = [];
-    let currentSessionId = null;
 
     // Helper to get session ID from DOM
     function updateCurrentSessionIdFromDOM() {
@@ -914,7 +1034,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error loading chat subjects:', error);
             });
     }
-    let currentFilterValue = 'all';
 
     function setActiveFilter(value, label) {
         currentFilterValue = value;
@@ -1021,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.chat_history && data.chat_history.length > 0) {
-                chatHistory.innerHTML = '';
+                chatHistory.innerHTML = ''; // Clear before adding
                 data.chat_history.forEach(msg => {
                     if (msg.message_type === 'user') {
                         addUserMessage(msg.content, msg.created_at, msg.image_data);
@@ -1318,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Rechtliches';
         
-        if (fromSidebar) {
+        if (fromSidebar || isGuest) {
             backToSettingsHomeBtn.onclick = () => {
                 settingsView.classList.add('hidden');
                 chatView.classList.remove('hidden');

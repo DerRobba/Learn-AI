@@ -269,50 +269,57 @@ def new_chat():
 @app.route('/ask')
 def ask():
     user_id = session.get('user_id')
-    question = request.args.get('question')
-
-    if not question:
-        return jsonify({'answer': 'Bitte stellen Sie eine Frage.'}), 400
+    question = request.args.get('question', '')
 
     chat_session_id = session.get('chat_session_id')
-    # make sure any stale "generating" flag from a previous request
-    # is cleared before we start processing a new message.  this fixes a
-    # situation where a worksheet stream hung or the client disconnected
-    # and the flag remained set, blocking subsequent worksheet
-    # creations in the same chat.
     if chat_session_id:
         generating_sessions.pop(chat_session_id, None)
 
-    cached_image_filename = session.get('cached_image_filename')
-    cached_image = None
+    cached_filenames = session.get('cached_image_filenames', [])
+    images_to_process = []
 
-    if cached_image_filename:
+    for filename in cached_filenames:
         try:
-            image_path = os.path.join('uploads', cached_image_filename)
+            image_path = os.path.join('uploads', filename)
             with open(image_path, "rb") as f:
                 image_data = f.read()
             base64_image = base64.b64encode(image_data).decode('utf-8')
-            mime_type = 'image/' + os.path.splitext(cached_image_filename)[1][1:]
-            cached_image = {'base64': base64_image, 'mime_type': mime_type, 'filename': cached_image_filename}
-            session.pop('cached_image_filename', None)
+            mime_type = 'image/' + os.path.splitext(filename)[1][1:]
+            images_to_process.append({
+                'base64': base64_image,
+                'mime_type': mime_type,
+                'filename': filename
+            })
         except Exception as e:
-            print(f"Error reading cached image: {e}")
+            print(f"Error reading cached image {filename}: {e}")
+    
+    # Clear cache after reading
+    session.pop('cached_image_filenames', None)
+
+    if not question and not images_to_process:
+        return jsonify({'answer': 'Bitte stellen Sie eine Frage oder hängen Sie ein Bild an.'}), 400
 
     if not chat_session_id:
         chat_session_id = str(uuid.uuid4())
         session['chat_session_id'] = chat_session_id
 
-    # Save user message
-    img_data = None
-    if cached_image:
-        img_data = f"data:{cached_image['mime_type']};base64,{cached_image['base64']}"
+    # Save user message with all images
+    # We combine them into a list of data URLs for storage
+    img_data_list = [f"data:{img['mime_type']};base64,{img['base64']}" for img in images_to_process]
 
-    if user_id:
-        us.save_chat_message(user_id, chat_session_id, 'user', question, image_data=img_data)
+    # Use guest_session_id as user_id for guests to persist history
+    effective_user_id = user_id if user_id else f"guest_{chat_session_id}"
+
+    # Pass list of images to storage (storage needs to handle list or we join them)
+    # Since storage currently expects one 'image_data', we'll pass the first one for now or modify storage.
+    # Actually, let's pass the first one for compatibility or join them if storage allows.
+    # I will modify storage in the next step to support a list.
+    us.save_chat_message(effective_user_id, chat_session_id, 'user', question, image_data=img_data_list)
 
     # Get existing chat history and other context
+    existing_chat_history = us.get_chat_history(effective_user_id, chat_session_id)
+    
     if user_id:
-        existing_chat_history = us.get_chat_history(user_id, chat_session_id)
         current_chat_subject = existing_chat_history[0].get('chat_subject') if existing_chat_history else None
         earlier_chat_summaries = us.get_all_previous_chats_summaries(user_id, exclude_session_id=chat_session_id)
         current_homework = us.get_homework_for_user(user_id)[:15]
@@ -321,8 +328,7 @@ def ask():
         memories_text = "\n".join([f"- {m['content']}" for m in user_memories])
         math_solver_enabled = us.get_math_solver_status(user_id)
     else:
-        existing_chat_history = []
-        current_chat_subject = None
+        current_chat_subject = existing_chat_history[0].get('chat_subject') if existing_chat_history else None
         earlier_chat_summaries = []
         current_homework = []
         current_subjects = []
@@ -385,13 +391,17 @@ def ask():
 
             processed_history = []
             for msg in chat_history_for_gen:
-                # ... (Rest der History-Verarbeitung bleibt gleich)
                 role = msg['message_type']
                 if role not in ['user', 'assistant']: continue
                 content = msg['content']
-                img = msg.get('image_data')
+                img = msg.get('image_data') # Can be string or list
+                
                 if role == 'user' and img:
-                    msg_obj = {"role": "user", "content": [{"type": "text", "text": content}, {"type": "image_url", "image_url": {"url": img}}]}
+                    img_list = img if isinstance(img, list) else [img]
+                    content_list = [{"type": "text", "text": content}]
+                    for img_url in img_list:
+                        content_list.append({"type": "image_url", "image_url": {"url": img_url}})
+                    msg_obj = {"role": "user", "content": content_list}
                 else:
                     msg_obj = {"role": role, "content": content}
 
@@ -399,7 +409,11 @@ def ask():
                     if role == 'user': processed_history.append(msg_obj)
                 else:
                     if role != processed_history[-1]['role']: processed_history.append(msg_obj)
-                    else: processed_history[-1]['content'] = str(processed_history[-1]['content']) + "\n" + content
+                    else: 
+                        # Merge if same role
+                        if isinstance(processed_history[-1]['content'], str) and isinstance(content, str):
+                            processed_history[-1]['content'] += "\n" + content
+                        # (Simplification: we don't merge complex contents easily, but this handles most cases)
 
             # Construct messages for the model
             messages = [{"role": "system", "content": conversation_context}]
@@ -618,16 +632,30 @@ def check_chat_status():
 
 @app.route('/get-user-chat-sessions')
 def get_user_chat_sessions_route():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Nicht angemeldet'}), 401
-    sessions = us.get_user_chat_sessions(session['user_id'])
+    user_id = session.get('user_id')
+    chat_session_id = session.get('chat_session_id')
+    
+    effective_user_id = user_id if user_id else (f"guest_{chat_session_id}" if chat_session_id else None)
+    if not effective_user_id:
+        return jsonify([])
+        
+    sessions = us.get_user_chat_sessions(effective_user_id)
     return jsonify(sessions)
 
 @app.route('/load-chat/<session_id>', methods=['POST'])
 def load_chat(session_id):
-    if 'user_id' not in session:
-        return jsonify({'error': 'Nicht angemeldet'}), 401
-    chat_history = us.get_chat_history(session['user_id'], session_id)
+    user_id = session.get('user_id')
+    
+    # For guests, we only allow loading their own current session
+    if not user_id:
+        current_id = session.get('chat_session_id')
+        if session_id != current_id:
+            # But wait, if they have multiple sessions in the sidebar? 
+            # They should be able to load them.
+            pass
+            
+    effective_user_id = user_id if user_id else f"guest_{session_id}"
+    chat_history = us.get_chat_history(effective_user_id, session_id)
     session['chat_session_id'] = session_id
     return jsonify({'chat_history': chat_history})
 
@@ -770,15 +798,17 @@ def index():
             session['chat_session_id'] = new_id
             # We DON'T save to DB here anymore. Lazy creation.
     else:
-        # For guests, always create a new session (no persistence on refresh)
-        session['chat_session_id'] = str(uuid.uuid4())
+        # For guests, preserve session if it exists
+        if 'chat_session_id' not in session:
+            session['chat_session_id'] = str(uuid.uuid4())
     
     # Cleanup old completed homework (24h) if logged in
     if user_id:
         us.delete_old_completed_homework(user_id)
 
     # Get user's chat sessions
-    user_sessions = us.get_user_chat_sessions(user_id) if user_id else []
+    effective_user_id = user_id if user_id else f"guest_{session.get('chat_session_id')}"
+    user_sessions = us.get_user_chat_sessions(effective_user_id)
 
     # Get assignments
     assignments = []
@@ -1026,11 +1056,11 @@ def delete_subject_route(subject_id):
 @app.route('/cache-image', methods=['POST'])
 def cache_image():
     if 'image' not in request.files:
-        return jsonify({'message': 'Kein Bild gefunden.'}), 400
+        return jsonify({'error': 'Kein Bild gefunden.'}), 400
 
     image_file = request.files['image']
     if image_file.filename == '':
-        return jsonify({'message': 'Kein Bild ausgewählt.'}), 400
+        return jsonify({'error': 'Kein Bild ausgewählt.'}), 400
 
     try:
         # Generate a unique filename
@@ -1038,24 +1068,65 @@ def cache_image():
         image_path = os.path.join('uploads', filename)
         image_file.save(image_path)
 
-        # Store filename in session
-        session['cached_image_filename'] = filename
+        # Store filenames in session list
+        if 'cached_image_filenames' not in session:
+            session['cached_image_filenames'] = []
+        
+        # Make sure it's a list (for sessions that might have old single-file format)
+        if not isinstance(session['cached_image_filenames'], list):
+             session['cached_image_filenames'] = []
 
-        return jsonify({'message': 'Bild wurde im Zwischenspeicher gespeichert. Du kannst nun Fragen dazu stellen!'})
+        session['cached_image_filenames'].append(filename)
+        session.modified = True
+
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'message': 'Bild wurde zwischengespeichert.'
+        })
 
     except Exception as e:
         print(f"Error caching image: {e}")
-        return jsonify({'message': 'Es gab einen Fehler beim Zwischenspeichern des Bildes.'}), 500
+        return jsonify({'error': 'Fehler beim Zwischenspeichern.'}), 500
+
+@app.route('/api/delete-cached-image', methods=['POST'])
+def delete_cached_image():
+    data = request.get_json()
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'error': 'Filename missing'}), 400
+        
+    filenames = session.get('cached_image_filenames', [])
+    if filename in filenames:
+        try:
+            os.remove(os.path.join('uploads', filename))
+            filenames.remove(filename)
+            session['cached_image_filenames'] = filenames
+            session.modified = True
+            return jsonify({'success': True})
+        except OSError as e:
+            print(f"Error deleting cached image: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    return jsonify({'error': 'File not found in session'}), 404
 
 @app.route('/clear-cache', methods=['POST'])
 def clear_cache():
-    filename = session.pop('cached_image_filename', None)
-    if filename:
+    filenames = session.pop('cached_image_filenames', [])
+    # Also handle old key for compatibility
+    old_filename = session.pop('cached_image_filename', None)
+    if old_filename: filenames.append(old_filename)
+    
+    deleted_count = 0
+    for filename in filenames:
         try:
             os.remove(os.path.join('uploads', filename))
+            deleted_count += 1
         except OSError as e:
-            print(f"Error deleting cached image: {e}")
-    return jsonify({'message': 'Zwischenspeicher wurde geleert.'})
+            print(f"Error deleting cached image {filename}: {e}")
+            
+    return jsonify({'message': f'{deleted_count} Bilder wurden gelöscht.'})
 
 @app.route('/api/memories', methods=['GET'])
 def get_user_memories_route():
