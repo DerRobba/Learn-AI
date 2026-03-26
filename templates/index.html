@@ -272,33 +272,33 @@
         <!-- Header -->
         <header class="bg-white shadow-lg px-2 sm:px-4 h-16 flex items-center justify-between relative z-50">
             <!-- Left: Sidebar Menu -->
-            <div class="flex items-center space-x-2 sm:space-x-3">
+            <div class="flex items-center space-x-1 sm:space-x-2">
                 <button id="sidebar-menu-btn" class="flex flex-col justify-center items-center w-8 h-8 space-y-1 hover:scale-110 transition-transform duration-300">
                     <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                     <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                     <div class="burger-line w-6 h-0.5 bg-gray-800 rounded transition-all duration-300"></div>
                 </button>
-                <button id="new-chat-btn" class="flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors duration-300" title="Neuer Chat">
+                <button id="new-chat-btn" class="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-colors duration-300" title="Neuer Chat">
                     <span class="material-symbols-outlined text-lg">add_comment</span>
                 </button>
                 {% if rating_in_main_page %}
-                <a href="https://rate.l-ai.pro" target="_blank" class="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-600 rounded-xl hover:bg-yellow-200 transition-colors duration-300" title="Bewerten">
+                <a href="https://rate.l-ai.pro" target="_blank" class="flex items-center space-x-2 px-2 sm:px-3 py-2 bg-yellow-100 text-yellow-600 rounded-xl hover:bg-yellow-200 transition-colors duration-300" title="Bewerten">
                     <span class="material-symbols-outlined text-lg">star</span>
                     <span class="hidden md:inline text-sm font-medium">Bewerten</span>
                 </a>
                 {% endif %}
-                <button id="start-tutorial-btn" class="hidden flex items-center justify-center space-x-2 px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-colors duration-300" title="Tutorial starten">
+                <button id="start-tutorial-btn" class="hidden flex items-center justify-center space-x-2 px-2 sm:px-3 py-2 bg-orange-100 text-orange-600 rounded-xl hover:bg-orange-200 transition-colors duration-300" title="Tutorial starten">
                     <span class="material-symbols-outlined text-lg">help</span>
                     <span class="hidden md:inline text-sm font-medium">Tutorial</span>
                 </button>
             </div>
 
             <!-- Center: Logo -->
-            <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-2 sm:space-x-3">
+            <div class="flex items-center space-x-2 sm:space-x-3 mx-2">
                 <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                     <span class="material-symbols-outlined text-white text-lg">neurology</span>
                 </div>
-                <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
+                <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden min-[450px]:block">
                     Learn-AI
                 </h1>
             </div>
@@ -306,11 +306,13 @@
             <!-- Right: Actions -->
             <div class="flex items-center space-x-1 sm:space-x-2">
                 {% if is_guest %}
-                <a href="/login" class="flex items-center justify-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-300" title="Anmelden">
-                    <span class="text-xs sm:text-sm font-bold">Anmelden</span>
+                <a href="/login" class="flex items-center justify-center px-2 sm:px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-300" title="Anmelden">
+                    <span class="material-symbols-outlined sm:hidden text-lg">login</span>
+                    <span class="hidden sm:inline text-xs sm:text-sm font-bold">Anmelden</span>
                 </a>
-                <a href="/register" class="flex items-center justify-center px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors duration-300" title="Registrieren">
-                    <span class="text-xs sm:text-sm font-bold">Registrieren</span>
+                <a href="/register" class="flex items-center justify-center px-2 sm:px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors duration-300" title="Registrieren">
+                    <span class="material-symbols-outlined sm:hidden text-lg">person_add</span>
+                    <span class="hidden sm:inline text-xs sm:text-sm font-bold">Registrieren</span>
                 </a>
                 {% else %}
                 <a href="/logout" class="flex items-center justify-center w-10 h-10 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-300">
@@ -325,7 +327,23 @@
             <!-- Unified Sidebar -->
             <aside id="sidebar" class="w-3/4 md:w-80 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 ease-in-out fixed top-16 bottom-0 left-0 z-40 flex flex-col">
                 <!-- Sidebar Header -->
-                <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div class="p-4 border-b border-gray-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-7 h-7 bg-gradient-to-br from-purple-600 to-pink-500 rounded-lg flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-sm">neurology</span>
+                            </div>
+                            <span class="font-bold text-gray-800">Menü</span>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button id="filter-open-btn" class="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" title="Filter nach Fach">
+                                <span class="material-symbols-outlined text-xl">filter_alt</span>
+                            </button>
+                            <button id="close-sidebar-btn" class="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                    </div>
                     <div id="tabs-container" class="overflow-x-auto no-scrollbar">
                         <div class="flex items-center space-x-2 min-w-max pb-1">
                             <button id="chats-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700">Chats</button>
@@ -333,9 +351,6 @@
                             <button id="homework-tab-btn" class="whitespace-nowrap px-4 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100">Hausaufgaben</button>
                         </div>
                     </div>
-                    <button id="close-sidebar-btn" class="md:hidden ml-2 p-1 text-gray-500 hover:bg-gray-100 rounded-lg">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
                 </div>
 
                 <!-- Sidebar Content -->
@@ -358,96 +373,101 @@
                     </div>
                     {% endif %}
                     
-                    <div>
-                        <!-- Chat Subject Filter -->
-                        <div id="chat-subject-filter-container" class="mb-3 px-2">
-                        <label for="chat-subject-filter" class="block text-xs font-medium text-gray-700 mb-1">Filter nach Fach:</label>
-                        <select id="chat-subject-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md">
-                            <option value="all">Alle Chats</option>
-                            <!-- Options will be dynamically loaded here -->
-                        </select>
-                    </div>
-
-                    <!-- Chat Sessions -->
-                    <div id="chat-sessions-container" class="space-y-2">
-                        {% for session in chat_sessions %}
-                            <div class="chat-session p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-purple-200 cursor-pointer transition-all duration-300 active:bg-purple-50 {% if session.session_id == current_session_id %}bg-purple-100 border-purple-300{% endif %}"
-                                 data-session-id="{{ session.session_id }}"
-                                 data-chat-subject="{{ session.chat_subject if session.chat_subject else '' }}"
-                                 style="touch-action: manipulation;">
-                                <div class="flex flex-col space-y-1 pointer-events-none">
-                                    <span class="session-title text-sm font-medium text-gray-800 truncate">{{ session.session_name }}</span>
-                                    {% if session.chat_subject %}
-                                        <span class="session-subject text-xs text-gray-600 truncate">Fach: {{ session.chat_subject }}</span>
-                                    {% endif %}
-                                    <span class="session-date text-xs text-gray-500">{{ session.last_message[:16] }}</span>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-
-                    <!-- Assignments List -->
-                    <div id="assignment-list-container" class="space-y-2 hidden">
-                        {% if user_type == 'teacher' %}
-                            <a href="{{ url_for('create_assignment_route') }}" class="flex items-center space-x-2 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors duration-300 mb-2" style="touch-action: manipulation;">
-                                <span class="material-symbols-outlined text-sm">add</span>
-                                <span class="text-sm font-medium">Neue Aufgabe</span>
-                            </a>
-                        {% endif %}
-                        {% for assignment in assignments %}
-                            <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}"
-                               class="assignment-item block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-green-200 transition-all duration-300 active:bg-green-50"
-                               style="touch-action: manipulation;">
-                                <div class="flex flex-col space-y-1">
-                                    <span class="assignment-title text-sm font-medium text-gray-800 truncate">{{ assignment.title }}</span>
-                                    <span class="assignment-date text-xs text-gray-500">{{ assignment.created_at[:10] }}</span>
-                                </div>
-                            </a>
-                        {% else %}
-                            <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Aufgaben verfügbar.</p>
-                        {% endfor %}
-                    </div>
-
-                    <!-- Homework List -->
-                    <div id="homework-list-container" class="space-y-2 hidden">
-                        <div class="flex space-x-2 mb-2">
-                            <a href="{{ url_for('create_homework_route') }}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors duration-300" style="touch-action: manipulation;">
-                                <span class="material-symbols-outlined text-sm">add</span>
-                                <span class="text-sm font-medium">Neu</span>
-                            </a>
-                            <a href="{{ url_for('calendar_route') }}" class="flex-1 flex items-center justify-center space-x-2 bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-200 active:bg-indigo-300 transition-colors duration-300" style="touch-action: manipulation;">
-                                <span class="material-symbols-outlined text-sm">calendar_month</span>
-                                <span class="text-sm font-medium">Kalender</span>
-                            </a>
-                        </div>
-                        {% for hw in homework %}
-                            <a href="{{ url_for('view_homework', homework_id=hw.id) }}"
-                               class="homework-item block p-3 rounded-lg border transition-all duration-300 {% if hw.completed %}bg-green-50 border-green-200{% else %}bg-gray-50 border-transparent hover:bg-gray-100 hover:border-blue-200{% endif %}"
-                               data-id="{{ hw.id }}"
-                               style="touch-action: manipulation;">
-                                <div class="flex items-start justify-between">
-                                    <div class="flex flex-col space-y-1 overflow-hidden">
-                                        <div class="flex items-center space-x-2">
-                                            <span class="homework-title text-sm font-medium truncate {% if hw.completed %}text-green-800 line-through{% else %}text-gray-800{% endif %}">{{ hw.title }}</span>
-                                            {% if hw.subject_name %}
-                                                <span class="text-xs px-2 py-0.5 rounded-full {% if hw.completed %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
-                                                    {{ hw.subject_name }}
-                                                </span>
-                                            {% endif %}
-                                        </div>
-                                        <span class="homework-date text-xs text-gray-500">Fällig am: {{ hw.due_date|german_date }}</span>
+                    <div id="sidebar-tabs-content">
+                        <!-- Chat Sessions -->
+                        <div id="chat-sessions-container" class="space-y-2">
+                            {% for session in chat_sessions %}
+                                <div class="chat-session p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-purple-200 cursor-pointer transition-all duration-300 active:bg-purple-50 {% if session.session_id == current_session_id %}bg-purple-100 border-purple-300{% endif %}"
+                                     data-session-id="{{ session.session_id }}"
+                                     data-chat-subject="{{ session.chat_subject if session.chat_subject else '' }}"
+                                     style="touch-action: manipulation;">
+                                    <div class="flex flex-col space-y-1 pointer-events-none">
+                                        <span class="session-title text-sm font-medium text-gray-800 truncate">{{ session.session_name }}</span>
+                                        {% if session.chat_subject %}
+                                            <span class="session-subject text-xs text-gray-600 truncate">Fach: {{ session.chat_subject }}</span>
+                                        {% endif %}
+                                        <span class="session-date text-xs text-gray-500">{{ session.last_message[:16] }}</span>
                                     </div>
-                                    <button class="toggle-homework-btn p-1 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0" title="{% if hw.completed %}Als offen markieren{% else %}Erledigt{% endif %}">
-                                        <span class="material-symbols-outlined text-lg {% if hw.completed %}text-green-600{% else %}text-gray-400{% endif %}">
-                                            {% if hw.completed %}check_circle{% else %}radio_button_unchecked{% endif %}
-                                        </span>
-                                    </button>
                                 </div>
-                            </a>
-                        {% else %}
-                            <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Hausaufgaben verfügbar.</p>
-                        {% endfor %}
+                            {% endfor %}
+                        </div>
+
+                        <!-- Assignments List -->
+                        <div id="assignment-list-container" class="space-y-2 hidden">
+                            {% if user_type == 'teacher' %}
+                                <a href="{{ url_for('create_assignment_route') }}" class="flex items-center space-x-2 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors duration-300 mb-2" style="touch-action: manipulation;">
+                                    <span class="material-symbols-outlined text-sm">add</span>
+                                    <span class="text-sm font-medium">Neue Aufgabe</span>
+                                </a>
+                            {% endif %}
+                            {% for assignment in assignments %}
+                                <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}"
+                                   class="assignment-item block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-green-200 transition-all duration-300 active:bg-green-50"
+                                   style="touch-action: manipulation;">
+                                    <div class="flex flex-col space-y-1">
+                                        <span class="assignment-title text-sm font-medium text-gray-800 truncate">{{ assignment.title }}</span>
+                                        <span class="assignment-date text-xs text-gray-500">{{ assignment.created_at[:10] }}</span>
+                                    </div>
+                                </a>
+                            {% else %}
+                                <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Aufgaben verfügbar.</p>
+                            {% endfor %}
+                        </div>
+
+                        <!-- Homework List -->
+                        <div id="homework-list-container" class="space-y-2 hidden">
+                            <div class="flex space-x-2 mb-2">
+                                <a href="{{ url_for('create_homework_route') }}" class="flex-1 flex items-center justify-center space-x-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors duration-300" style="touch-action: manipulation;">
+                                    <span class="material-symbols-outlined text-sm">add</span>
+                                    <span class="text-sm font-medium">Neu</span>
+                                </a>
+                                <a href="{{ url_for('calendar_route') }}" class="flex-1 flex items-center justify-center space-x-2 bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-200 active:bg-indigo-300 transition-colors duration-300" style="touch-action: manipulation;">
+                                    <span class="material-symbols-outlined text-sm">calendar_month</span>
+                                    <span class="text-sm font-medium">Kalender</span>
+                                </a>
+                            </div>
+                            {% for hw in homework %}
+                                <a href="{{ url_for('view_homework', homework_id=hw.id) }}"
+                                   class="homework-item block p-3 rounded-lg border transition-all duration-300 {% if hw.completed %}bg-green-50 border-green-200{% else %}bg-gray-50 border-transparent hover:bg-gray-100 hover:border-blue-200{% endif %}"
+                                   data-id="{{ hw.id }}"
+                                   style="touch-action: manipulation;">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex flex-col space-y-1 overflow-hidden">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="homework-title text-sm font-medium truncate {% if hw.completed %}text-green-800 line-through{% else %}text-gray-800{% endif %}">{{ hw.title }}</span>
+                                                {% if hw.subject_name %}
+                                                    <span class="text-xs px-2 py-0.5 rounded-full {% if hw.completed %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                                                        {{ hw.subject_name }}
+                                                    </span>
+                                                {% endif %}
+                                            </div>
+                                            <span class="homework-date text-xs text-gray-500">Fällig am: {{ hw.due_date|german_date }}</span>
+                                        </div>
+                                        <button class="toggle-homework-btn p-1 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0" title="{% if hw.completed %}Als offen markieren{% else %}Erledigt{% endif %}">
+                                            <span class="material-symbols-outlined text-lg {% if hw.completed %}text-green-600{% else %}text-gray-400{% endif %}">
+                                                {% if hw.completed %}check_circle{% else %}radio_button_unchecked{% endif %}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </a>
+                            {% else %}
+                                <p class="text-center text-gray-500 text-sm mt-4">Es sind keine Hausaufgaben verfügbar.</p>
+                            {% endfor %}
+                        </div>
                     </div>
+
+                    <!-- Subject Filter View (Hidden by default) -->
+                    <div id="subject-filter-view" class="hidden animate-fadeIn p-2">
+                        <div class="flex items-center justify-between mb-4 px-2">
+                            <h3 class="text-lg font-bold text-gray-800">Nach Fach filtern</h3>
+                            <button id="close-filter-view-btn" class="p-1 hover:bg-gray-100 rounded-lg text-gray-500">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        <div id="subject-chips" class="flex flex-wrap gap-2 px-1">
+                            <button class="subject-chip px-4 py-2 rounded-full text-sm font-semibold bg-purple-600 text-white border border-purple-600 shadow-sm transition-all" data-value="all">Alle Chats</button>
+                            <!-- Dynamic chips will be added here -->
+                        </div>
                     </div>
                 </div>
 

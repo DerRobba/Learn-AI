@@ -20,10 +20,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const cachedImageIndicator = document.getElementById('cached-image-indicator');
     const newChatBtn = document.getElementById('new-chat-btn');
     const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
     
     // Chat Subject Filter Elements
-    const chatSubjectFilterContainer = document.getElementById('chat-subject-filter-container');
-    const chatSubjectFilter = document.getElementById('chat-subject-filter');
+    const filterOpenBtn = document.getElementById('filter-open-btn');
+    const closeFilterViewBtn = document.getElementById('close-filter-view-btn');
+    const sidebarTabsContent = document.getElementById('sidebar-tabs-content');
+    const subjectFilterView = document.getElementById('subject-filter-view');
+    const subjectChipsContainer = document.getElementById('subject-chips');
 
     function animateTitleUpdate(element, newTitle) {
         element.textContent = newTitle;
@@ -453,8 +457,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const speechSupported = !!SpeechRecognition;
 
     if (chatInput) {
-        const sendButton = document.getElementById('send-button');
-
         if (sendButton) {
             sendButton.addEventListener('click', sendMessage);
         }
@@ -740,6 +742,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 recordButton.classList.remove('hidden');
                 sendButton.classList.add('hidden');
             }
+
+            // Refresh sidebar after a short delay to ensure DB has been updated by the /ask request
+            // This handles "lazy" chat creation (it appears only after first message)
+            setTimeout(loadAllChatSessionsAndRender, 1000);
         }
     }
 
@@ -795,7 +801,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!chatSessionsContainer) return;
         chatSessionsContainer.innerHTML = ''; // Clear existing sessions
 
-        if (sessionsToRender.length === 0) {
+        if (!Array.isArray(sessionsToRender) || sessionsToRender.length === 0) {
             chatSessionsContainer.innerHTML = `
                 <p class="text-center text-gray-500 text-sm mt-4">Keine Chats gefunden.</p>
             `;
@@ -828,57 +834,136 @@ document.addEventListener('DOMContentLoaded', function() {
         updateCurrentSessionIdFromDOM();
     }
 
+    // Toggle Filter View in Sidebar
+    if (filterOpenBtn && subjectFilterView && sidebarTabsContent) {
+        filterOpenBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Open sidebar if closed
+            if (!sidebar.classList.contains('translate-x-0')) {
+                toggleSidebar();
+            }
+            // Switch views
+            sidebarTabsContent.classList.add('hidden');
+            subjectFilterView.classList.remove('hidden');
+            loadChatSubjects(); // Refresh chips
+        });
+    }
+
+    if (closeFilterViewBtn) {
+        closeFilterViewBtn.addEventListener('click', () => {
+            if (subjectFilterView) subjectFilterView.classList.add('hidden');
+            if (sidebarTabsContent) sidebarTabsContent.classList.remove('hidden');
+        });
+    }
+
     function loadChatSubjects() {
-        if (!chatSubjectFilter) return;
+        if (!subjectChipsContainer) return;
+
+        // Check if user is logged in before fetching subjects
+        const authData = document.body.dataset.authenticated;
+        const isLoggedIn = authData === 'true';
+        if (!isLoggedIn) return;
 
         fetch('/api/chat-subjects')
             .then(response => response.json())
             .then(subjects => {
-                const currentVal = chatSubjectFilter.value;
-                // Clear existing options except "Alle Chats"
-                chatSubjectFilter.innerHTML = '<option value="all">Alle Chats</option>';
-                subjects.forEach(subject => {
-                    const option = document.createElement('option');
-                    option.value = subject;
-                    option.textContent = subject;
-                    chatSubjectFilter.appendChild(option);
-                });
-                // Restore selection if still valid
-                if (currentVal && Array.from(chatSubjectFilter.options).some(o => o.value === currentVal)) {
-                    chatSubjectFilter.value = currentVal;
+                // Keep "Alle" chip and clear others
+                const allChip = subjectChipsContainer.querySelector('[data-value="all"]');
+                subjectChipsContainer.innerHTML = '';
+                if (allChip) {
+                    allChip.textContent = 'Alle Chats'; // Reset label
+                    // Set active style for "all" chip if it's the current filter
+                    if (currentFilterValue === 'all') {
+                        allChip.className = 'subject-chip px-4 py-2 rounded-full text-sm font-semibold bg-purple-600 text-white border border-purple-600 shadow-sm transition-all duration-300';
+                    } else {
+                        allChip.className = 'subject-chip px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-600 border border-gray-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-all duration-300';
+                    }
+                    subjectChipsContainer.appendChild(allChip);
                 }
+
+                if (Array.isArray(subjects)) {
+                    subjects.forEach(subject => {
+                        if (!subject) return;
+                        const chip = document.createElement('button');
+                        // Set active style if this subject is the current filter
+                        if (currentFilterValue === subject) {
+                            chip.className = 'subject-chip px-4 py-2 rounded-full text-sm font-semibold bg-purple-600 text-white border border-purple-600 shadow-sm transition-all duration-300';
+                        } else {
+                            chip.className = 'subject-chip px-4 py-2 rounded-full text-sm font-semibold bg-gray-100 text-gray-600 border border-gray-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-all duration-300';
+                        }
+                        chip.dataset.value = subject;
+                        chip.textContent = subject;
+                        subjectChipsContainer.appendChild(chip);
+                    });
+                }
+
+                // Re-add click listeners to all chips
+                document.querySelectorAll('.subject-chip').forEach(chip => {
+                    chip.addEventListener('click', () => {
+                        const val = chip.dataset.value;
+                        setActiveFilter(val, chip.textContent);
+                        // Hide filter view and show tabs after selection
+                        setTimeout(() => {
+                            if (subjectFilterView) subjectFilterView.classList.add('hidden');
+                            if (sidebarTabsContent) sidebarTabsContent.classList.remove('hidden');
+                        }, 200);
+                    });
+                });
             })
             .catch(error => {
                 console.error('Error loading chat subjects:', error);
             });
     }
+    let currentFilterValue = 'all';
+
+    function setActiveFilter(value, label) {
+        currentFilterValue = value;
+        
+        // Update chip styles
+        document.querySelectorAll('.subject-chip').forEach(chip => {
+            if (chip.dataset.value === value) {
+                chip.classList.remove('bg-gray-100', 'text-gray-600', 'border-gray-200');
+                chip.classList.add('bg-purple-600', 'text-white', 'border-purple-600', 'shadow-sm');
+            } else {
+                chip.classList.add('bg-gray-100', 'text-gray-600', 'border-gray-200');
+                chip.classList.remove('bg-purple-600', 'text-white', 'border-purple-600', 'shadow-sm');
+            }
+        });
+
+        filterChatSessions();
+    }
 
     function filterChatSessions() {
-        if (!chatSubjectFilter) return;
-        const selectedSubject = chatSubjectFilter.value;
+        const selectedSubject = currentFilterValue;
         if (selectedSubject === 'all') {
             renderChatSessions(allChatSessions);
         } else {
-            const filteredSessions = allChatSessions.filter(session => session.chat_subject === selectedSubject);
+            const filteredSessions = Array.isArray(allChatSessions) ? allChatSessions.filter(session => session.chat_subject === selectedSubject) : [];
             renderChatSessions(filteredSessions);
         }
     }
 
-    // Event-Listener für Filter-Dropdown
-    if (chatSubjectFilter) {
-        chatSubjectFilter.addEventListener('change', filterChatSessions);
-    }
-
     function loadAllChatSessionsAndRender() {
+        // Check if user is logged in before fetching sessions
+        const authData = document.body.dataset.authenticated;
+        const isLoggedIn = authData === 'true';
+        if (!isLoggedIn) {
+            allChatSessions = [];
+            renderChatSessions([]);
+            return;
+        }
+
         fetch('/get-user-chat-sessions') // This endpoint provides all sessions for the current user
         .then(response => response.json())
         .then(sessions => {
-            allChatSessions = sessions; // Store all sessions
+            allChatSessions = Array.isArray(sessions) ? sessions : []; // Store all sessions
             filterChatSessions(); // Apply current filter
             loadChatSubjects(); // Populate filter dropdown
         })
         .catch(error => {
             console.error('Error loading all chat sessions:', error);
+            allChatSessions = [];
+            renderChatSessions([]);
         });
     }
 
@@ -968,7 +1053,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
-                if (data) location.reload();
+                if (data && data.session_id) {
+                    currentSessionId = data.session_id;
+                    // Clear history and show welcome message LOCALLY
+                    chatHistory.innerHTML = `
+                        <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message">
+                            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span class="material-symbols-outlined text-white text-lg">adb</span>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center space-x-2 mb-1">
+                                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
+                                    <span class="text-xs text-gray-500">Jetzt</span>
+                                </div>
+                                <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Remove highlight from all sessions since this is a new, unsaved one
+                    document.querySelectorAll('.chat-session').forEach(s => {
+                        s.classList.remove('bg-purple-100', 'border-purple-300');
+                        s.classList.add('bg-gray-50');
+                    });
+
+                    // Close sidebar on mobile
+                    if (window.innerWidth < 768 && sidebar.classList.contains('translate-x-0')) {
+                        toggleSidebar();
+                    }
+                }
             })
             .catch(error => {
                 console.error('Error creating new chat:', error);
