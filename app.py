@@ -261,11 +261,9 @@ def new_chat():
         except OSError as e:
             print(f"Error deleting cached image: {e}")
 
-    us.save_chat_message(
-        session['user_id'], new_session_id, 'assistant',
-        'Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!',
-        session_name='Neuer Chat'
-    )
+    # We DON'T save to DB here anymore. 
+    # The chat will be "properly" created when the user sends the first message.
+    
     return jsonify({'session_id': new_session_id})
 
 @app.route('/ask')
@@ -372,12 +370,12 @@ def ask():
             
             # --- STILLE HINTERGRUND-AKTIONEN ---
             conversation_context += "\n\nHINTERGRUND-AUFGABEN (STRENG GEHEIM):"
-            conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide stillschweigend über das Fach mit <action>{\"type\": \"set_chat_subject\", \"subject\": \"[FACH]\"}</action>. Erwähne dies NICHT im Text."
+            conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide über das Fach. Nutze UNBEDINGT eines der folgenden Fächer: Mathematik, Deutsch, Englisch, Physik, Chemie, Biologie, Geschichte, Geographie, Informatik, Kunst, Musik, Sport, Religion, Ethik, Wirtschaft, Politik, Französisch, Latein, Spanisch. Falls es nicht eindeutig zugeordnet werden kann, nutze 'Allgemein'. Sende UNBEDINGT am Ende deiner Nachricht: <action>{\"type\": \"set_chat_subject\", \"subject\": \"Fachname\"}</action>. Erwähne dies NIEMALS im Text."
             
             if user_id:
                 current_name = us.get_session_name(user_id, chat_session_id)
                 if not current_name or current_name.strip() in ['Neuer Chat', 'None', '']:
-                    conversation_context += "\n2. TITEL: Sende <action>{\"type\": \"chat_naming\", \"title\": \"[TITEL]\"}</action> stillschweigend."
+                    conversation_context += "\n2. TITEL: Gib dem Chat einen kurzen, passenden Namen (max. 30 Zeichen). Sende dazu UNBEDINGT am Ende deiner Nachricht: <action>{\"type\": \"chat_naming\", \"title\": \"Dein Titel\"}</action>"
 
             # Finaler Entscheidungs-Check
             if math_solver_enabled:
@@ -768,14 +766,16 @@ def index():
     if user_id:
         # For logged-in users, preserve session
         if 'chat_session_id' not in session:
-            session['chat_session_id'] = str(uuid.uuid4())
+            new_id = str(uuid.uuid4())
+            session['chat_session_id'] = new_id
+            # We DON'T save to DB here anymore. Lazy creation.
     else:
         # For guests, always create a new session (no persistence on refresh)
         session['chat_session_id'] = str(uuid.uuid4())
     
     # Cleanup old completed homework (24h) if logged in
     if user_id:
-        delete_old_completed_homework(user_id)
+        us.delete_old_completed_homework(user_id)
 
     # Get user's chat sessions
     user_sessions = us.get_user_chat_sessions(user_id) if user_id else []
