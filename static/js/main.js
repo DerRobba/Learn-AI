@@ -1284,8 +1284,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const homeworkContextMenu = document.getElementById('homework-context-menu');
     const deleteHomeworkOption = document.getElementById('delete-homework');
 
-    const settingsBtn = document.getElementById('settings-btn');
-    const sidebarLegalBtn = document.getElementById('sidebar-legal-btn');
     const settingsView = document.getElementById('settings-view');
     const settingsHome = document.getElementById('settings-home');
     const memoriesSection = document.getElementById('memories-section');
@@ -1307,6 +1305,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const openAgbBtn = document.getElementById('open-agb-btn');
 
     const mathSolverToggle = document.getElementById('math-solver-toggle');
+    let legalBackTarget = 'settings';
 
     // Download Data
     const downloadDataBtn = document.getElementById('download-data-btn');
@@ -1360,7 +1359,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             chatView.classList.add('hidden');
             settingsView.classList.remove('hidden');
-            showPrivacy(); // Directly show Legal section
+            showPrivacy(true); // Directly show Legal section from the sidebar
         });
     }
 
@@ -1409,6 +1408,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (agbSection) agbSection.classList.add('hidden');
     }
 
+    function returnFromSettingsToChat() {
+        settingsView.classList.add('hidden');
+        chatView.classList.remove('hidden');
+    }
+
     function showSettingsHome() {
         hideAllSettingsSections();
         settingsHome.classList.remove('hidden');
@@ -1436,15 +1440,11 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Rechtliches';
-        
-        if (fromSidebar || isGuest) {
-            backToSettingsHomeBtn.onclick = () => {
-                settingsView.classList.add('hidden');
-                chatView.classList.remove('hidden');
-            };
-        } else {
-            backToSettingsHomeBtn.onclick = showSettingsHome;
-        }
+
+        legalBackTarget = (fromSidebar || isGuest) ? 'chat' : 'settings';
+        backToSettingsHomeBtn.onclick = legalBackTarget === 'chat'
+            ? returnFromSettingsToChat
+            : showSettingsHome;
     }
 
     function showPrivacyPolicyText() {
@@ -1454,9 +1454,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Datenschutzerklärung';
         
-        // Use current back behavior to decide next back behavior
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     function showImpressum() {
@@ -1465,8 +1463,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Impressum';
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     function showAgb() {
@@ -1475,8 +1472,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Nutzungsbedingungen';
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     if (openMemoriesBtn) openMemoriesBtn.addEventListener('click', showMemories);
@@ -1596,15 +1592,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (backToChatBtn) {
         backToChatBtn.addEventListener('click', () => {
-            settingsView.classList.add('hidden');
-            chatView.classList.remove('hidden');
+            returnFromSettingsToChat();
         });
     }
 
     if (closeSettingsBtn) {
         closeSettingsBtn.addEventListener('click', () => {
-            settingsView.classList.add('hidden');
-            chatView.classList.remove('hidden');
+            returnFromSettingsToChat();
         });
     }
     
@@ -1612,8 +1606,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (chatsTabBtn) {
         const originalChatTabClick = chatsTabBtn.onclick; // Preserve existing logic if any (added via addEventListener above)
         chatsTabBtn.addEventListener('click', () => {
-             settingsView.classList.add('hidden');
-             chatView.classList.remove('hidden');
+             returnFromSettingsToChat();
         });
     }
 
