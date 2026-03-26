@@ -19,9 +19,12 @@ _lock = threading.Lock()
 
 def _ensure_users_dir():
     os.makedirs(USERS_DIR, exist_ok=True)
+    os.makedirs(os.path.join(USERS_DIR, 'guests'), exist_ok=True)
 
 
 def get_user_dir(user_uuid):
+    if user_uuid and user_uuid.startswith('guest_'):
+        return os.path.join(USERS_DIR, 'guests', user_uuid)
     return os.path.join(USERS_DIR, user_uuid)
 
 
@@ -233,11 +236,15 @@ def set_first_login_status(user_uuid, status):
 # ---------------------------------------------------------------------------
 
 def _load_conversations(user_uuid):
+    if not user_uuid:
+        return []
     path = os.path.join(get_user_dir(user_uuid), 'conversations.json')
     return _load_json(path, [])
 
 
 def _save_conversations(user_uuid, conversations):
+    if not user_uuid:
+        return
     path = os.path.join(get_user_dir(user_uuid), 'conversations.json')
     _save_json(path, conversations)
 
@@ -291,6 +298,7 @@ def save_chat_message(user_uuid, session_id, message_type, content,
                       image_data=None, worksheet_filename=None,
                       chat_subject=None, session_name=None):
     """Save a chat message. Returns message index within session (for worksheet updates)."""
+    # image_data can be a string (data URL) or a list of strings
     if not user_uuid:
         return None
     with _lock:
