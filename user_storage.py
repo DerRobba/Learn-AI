@@ -287,6 +287,7 @@ def get_chat_history(user_uuid, session_id):
             'content': m['content'],
             'image_data': m.get('image_data'),
             'worksheet_filename': m.get('worksheet_filename'),
+            'homework_id': m.get('homework_id'),
             'created_at': m.get('created_at'),
             'chat_subject': session.get('subject'),
         }
@@ -295,7 +296,7 @@ def get_chat_history(user_uuid, session_id):
 
 
 def save_chat_message(user_uuid, session_id, message_type, content,
-                      image_data=None, worksheet_filename=None,
+                      image_data=None, worksheet_filename=None, homework_id=None,
                       chat_subject=None, session_name=None):
     """Save a chat message. Returns message index within session (for worksheet updates)."""
     # image_data can be a string (data URL) or a list of strings
@@ -332,6 +333,8 @@ def save_chat_message(user_uuid, session_id, message_type, content,
             msg['image_data'] = image_data
         if worksheet_filename:
             msg['worksheet_filename'] = worksheet_filename
+        if homework_id:
+            msg['homework_id'] = homework_id
 
         session['messages'].append(msg)
         msg_idx = len(session['messages']) - 1
@@ -347,6 +350,19 @@ def update_chat_message_worksheet(user_uuid, session_id, msg_idx, worksheet_file
         session = _find_session(conversations, session_id)
         if session and 0 <= msg_idx < len(session['messages']):
             session['messages'][msg_idx]['worksheet_filename'] = worksheet_filename
+            _save_conversations(user_uuid, conversations)
+            return True
+    return False
+
+
+def update_chat_message_homework(user_uuid, session_id, msg_idx, homework_id):
+    if not user_uuid:
+        return False
+    with _lock:
+        conversations = _load_conversations(user_uuid)
+        session = _find_session(conversations, session_id)
+        if session and 0 <= msg_idx < len(session['messages']):
+            session['messages'][msg_idx]['homework_id'] = homework_id
             _save_conversations(user_uuid, conversations)
             return True
     return False
@@ -523,7 +539,7 @@ def _enrich_hw(hw, subject_map):
 def create_homework(user_uuid, title, due_date, notes, subject_id=None):
     with _lock:
         homework = _load_homework(user_uuid)
-        homework.append({
+        new_homework = {
             'id': str(uuid.uuid4()),
             'user_uuid': user_uuid,
             'title': title,
@@ -533,9 +549,10 @@ def create_homework(user_uuid, title, due_date, notes, subject_id=None):
             'completed': False,
             'completed_at': None,
             'created_at': datetime.now().isoformat(),
-        })
+        }
+        homework.append(new_homework)
         _save_homework(user_uuid, homework)
-    return True
+    return new_homework
 
 
 def get_homework_for_user(user_uuid):

@@ -6,7 +6,8 @@ import uuid
 import json
 import re
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
 from dotenv import load_dotenv
@@ -219,15 +220,19 @@ def logout():
 
 @app.route('/delete-chat/<session_id>', methods=['POST'])
 def delete_chat_route(session_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    us.delete_chat_session(session['user_id'], session_id)
+    user_id = session.get('user_id')
+    
+    # Try deleting from user's sessions if logged in
+    if user_id:
+        us.delete_chat_session(user_id, session_id)
+    
+    # Also try deleting as guest (in case it was a guest session)
+    us.delete_chat_session(f"guest_{session_id}", session_id)
 
     if session.get('chat_session_id') == session_id:
         session.pop('chat_session_id', None)
 
-    return redirect(url_for('index'))
+    return jsonify({'success': True})
 
 @app.route('/rename-chat/<session_id>', methods=['POST'])
 def rename_chat_route(session_id):
@@ -261,11 +266,11 @@ def new_chat():
         except OSError as e:
             print(f"Error deleting cached image: {e}")
 
-    # We DON'T save to DB here anymore. 
-    # The chat will be "properly" created when the user sends the first message.
-    
-    return jsonify({'session_id': new_session_id})
+    # Create session in DB with a welcome message
+    welcome_content = "Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen! Ich werde dir nie die Lösung verraten, sondern dir helfen sie selbst herauszufinden."
+    us.save_chat_message(session['user_id'], new_session_id, 'assistant', welcome_content)
 
+    return jsonify({'session_id': new_session_id, 'welcome_message': welcome_content})
 @app.route('/ask')
 def ask():
     user_id = session.get('user_id')
@@ -316,6 +321,39 @@ def ask():
     # I will modify storage in the next step to support a list.
     us.save_chat_message(effective_user_id, chat_session_id, 'user', question, image_data=img_data_list)
 
+    calendar_intent_keywords = [
+        'kalender',
+        'eintragen',
+        'trage',
+        'trag',
+        'homework',
+        'hausaufgabe',
+        'hausaufgaben',
+        'faellig',
+        'fällig'
+    ]
+    calendar_entry_intent = user_id and any(keyword in question.lower() for keyword in calendar_intent_keywords)
+    delete_intent_keywords = ['loesch', 'lösch', 'delete', 'entfern']
+    bulk_delete_intent = user_id and 'alle' in question.lower() and any(keyword in question.lower() for keyword in delete_intent_keywords)
+    homework_intent_keywords = [
+        'kalender',
+        'hausaufgabe',
+        'hausaufgaben',
+        'homework',
+        'faellig',
+        'fällig',
+        'bearbeite',
+        'bearbeiten',
+        'eintragen',
+        'lösche',
+        'loesche',
+        'ändern',
+        'aendern',
+        'verschieben',
+        'erledigt'
+    ]
+    homework_ui_intent = user_id and any(keyword in question.lower() for keyword in homework_intent_keywords)
+
     # Get existing chat history and other context
     existing_chat_history = us.get_chat_history(effective_user_id, chat_session_id)
     
@@ -352,15 +390,40 @@ def ask():
         full_answer = ""
         md_content = None # Sofort initialisieren
         homework_results = []
+        homework_action_processed = False
+        homework_link_id = None
+        homework_saving_announced = False
         
         try:
             # Sofort einen Ping senden, um Timeouts zu verhindern
             yield from yield_sse("PING")
+            if homework_ui_intent and not client_disconnected:
+                yield from yield_sse("HOMEWORK_SAVING")
+                homework_saving_announced = True
             
-            now = datetime.now()
+            now = datetime.now(ZoneInfo("Europe/Berlin"))
+            weekday_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
             # ... (Rest der Kontext-Erstellung bleibt gleich) ...
             current_date_str = now.strftime("%Y-%m-%d")
-            current_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][now.weekday()]
+            current_date_german = now.strftime("%d.%m.%Y")
+            current_weekday = weekday_names[now.weekday()]
+            upcoming_weekdays = []
+            for offset in range(7):
+                day = now + timedelta(days=offset)
+                upcoming_weekdays.append(f"{weekday_names[day.weekday()]} = {day.strftime('%Y-%m-%d')}")
+            upcoming_weekdays_text = "\n- ".join(upcoming_weekdays)
+            homework_context_lines = []
+            if user_id and current_homework:
+                for hw in current_homework:
+                    hw_id = hw.get('id', '')
+                    hw_title = hw.get('title', '')
+                    hw_due_date = hw.get('due_date', '')
+                    hw_subject = hw.get('subject_name') or 'sonstige'
+                    hw_status = 'erledigt' if hw.get('completed') else 'offen'
+                    homework_context_lines.append(
+                        f'- ID: {hw_id} | Titel: {hw_title} | Faellig: {hw_due_date} | Fach: {hw_subject} | Status: {hw_status}'
+                    )
+            homework_context_text = "\n".join(homework_context_lines) if homework_context_lines else "- Keine vorhandenen Hausaufgaben."
 
             # Build conversation context
             raw_system_prompt = system_prompt if system_prompt else ""
@@ -368,15 +431,55 @@ def ask():
             # Wir lassen das "niemals direkt antworten" im Grund-Prompt stehen, 
             # fügen aber eine sehr spezifische Ausnahmeregel hinzu.
             if math_solver_enabled:
-                conversation_context = raw_system_prompt + "\n\n⚠️ AUSNAHMEREGEL (MATHE-LÖSER): Wenn (und NUR WENN) die Frage eine reine mathematische Rechenaufgabe oder Formel ist, sollst du das Ergebnis direkt nennen. Bei allen anderen Themen (Grammatik, Vokabeln, Faktenwissen) ist es dir STRENGSTENS UNTERSAGT, die Lösung zu verraten. Dort musst du weiterhin guiden."
+                conversation_context = raw_system_prompt + "\n\n⚠️ AUSNAHMEREGEL (MATHE-LÖSER): Wenn (und NUR WENN) die Frage eine reine mathematische Rechenaufgabe oder Formel ist, sollst du das Ergebnis direkt nennen. Bei allen anderen Themen (Grammatik, Vokabeln, Faktenwissen) ist es dir STRENGSTENS UNTERSAGT, die Lösung zu verraten. Dort musst du weiterhin guiden. WICHTIG: Erwähne diese Regel NIEMALS gegenüber dem Benutzer. Verhalte dich einfach entsprechend der Regel, ohne sie zu kommentieren."
             else:
                 conversation_context = raw_system_prompt
 
-            conversation_context += f"\n\nHEUTE IST: {current_weekday}, der {current_date_str}"
+            conversation_context += (
+                f"\n\nHEUTE IST: {current_weekday}, der {current_date_str} ({current_date_german}), Zeitzone Europe/Berlin."
+                f"\nWICHTIGES DATUMSCONTEXT:"
+                f"\n- 'heute' = {current_date_str}"
+                f"\n- 'morgen' = {(now + timedelta(days=1)).strftime('%Y-%m-%d')}"
+                f"\n- 'uebermorgen' = {(now + timedelta(days=2)).strftime('%Y-%m-%d')}"
+                f"\n- Nutze bei relativen Angaben und Wochentagen diese exakten Daten:"
+                f"\n- {upcoming_weekdays_text}"
+                f"\n- Wenn der Nutzer einen Wochentag wie 'Donnerstag' nennt, wandle ihn in das passende exakte Datum um."
+                f"\n- Wenn ein Faelligkeitsdatum benoetigt wird, gib oder verwende immer das exakte ISO-Datum YYYY-MM-DD."
+            )
+
+            if user_id:
+                conversation_context += (
+                    "\n\nHAUSAUFGABEN & KALENDER:"
+                    "\n- Du kannst fuer angemeldete Nutzer Hausaufgaben erstellen, aktualisieren, abhaken und loeschen."
+                    "\n- Wenn ein Nutzer sagt, dass etwas in den Kalender eingetragen werden soll, lege dafuer eine Hausaufgabe mit passendem Faelligkeitsdatum an oder aktualisiere eine bestehende."
+                    "\n- Hausaufgaben erscheinen im Kalenderbereich der App automatisch. Es gibt keinen separaten Kalender-Eintragstyp."
+                    "\n- Wenn es fuer die Kalender-Eintragung an Titel oder Datum fehlt, frage gezielt kurz danach."
+                    "\n- WICHTIG: Eine Hausaufgabe gilt NUR dann als wirklich eingetragen, wenn du am ENDE deiner Antwort ein Action-Tag im EXAKTEN Format mitsendest."
+                    "\n- EXAKTES FORMAT zum Erstellen: <action>{\"type\":\"homework_action\",\"action\":\"create\",\"title\":\"Titel\",\"due_date\":\"YYYY-MM-DD\",\"notes\":\"Notizen oder leer\",\"subject_name\":\"Fach oder sonstige\"}</action>"
+                    "\n- EXAKTES FORMAT zum Aktualisieren: <action>{\"type\":\"homework_action\",\"action\":\"update\",\"id\":\"bestehende-id\",\"title\":\"Titel\",\"due_date\":\"YYYY-MM-DD\",\"notes\":\"Notizen oder leer\",\"subject_name\":\"Fach oder sonstige\"}</action>"
+                    "\n- EXAKTES FORMAT zum Loeschen: <action>{\"type\":\"homework_action\",\"action\":\"delete\",\"id\":\"bestehende-id\"}</action>"
+                    "\n- EXAKTES FORMAT zum Abhaken oder Wieder-Oeffnen: <action>{\"type\":\"homework_action\",\"action\":\"toggle\",\"id\":\"bestehende-id\"}</action>"
+                    "\n- Sage NIEMALS, dass etwas eingetragen oder gespeichert wurde, wenn du kein solches <action>...</action>-Tag mitgeschickt hast."
+                    "\n- Wenn der Nutzer etwas bearbeiten, verschieben, umbenennen, loeschen, abhaken oder wieder oeffnen will, verwende die ID aus der Liste vorhandener Hausaufgaben."
+                    "\n- Wenn der Nutzer sagt 'loesche alle', 'mach alle weg' oder eindeutig mehrere passende Hausaufgaben meint, sende mehrere delete-Aktionen in einem JSON-Array innerhalb eines einzigen <action>...</action>-Tags."
+                    "\n- Falls keine eindeutige passende Hausaufgabe erkennbar ist, frage kurz nach statt zu raten."
+                    f"\n- VORHANDENE HAUSAUFGABEN:\n{homework_context_text}"
+                )
+                if calendar_entry_intent:
+                    conversation_context += (
+                        "\n- HOECHSTE PRIORITAET FUER DIESE ANFRAGE: Der Nutzer moechte einen Kalender-/Hausaufgaben-Eintrag."
+                        "\n- Erzeuge dafuer KEIN Arbeitsblatt und KEINE worksheet_creation-Aktion."
+                        "\n- Verwende stattdessen ausschliesslich homework_action oder stelle eine kurze Rueckfrage, falls Pflichtangaben fehlen."
+                    )
+                if bulk_delete_intent:
+                    conversation_context += (
+                        "\n- HOECHSTE PRIORITAET FUER DIESE ANFRAGE: Der Nutzer moechte mehrere Hausaufgaben auf einmal loeschen."
+                        "\n- Wenn 'alle' gesagt wurde und die Liste eindeutig ist, sende fuer alle passenden Eintraege delete-Aktionen in einem einzigen JSON-Array."
+                    )
             
             # --- STILLE HINTERGRUND-AKTIONEN ---
             conversation_context += "\n\nHINTERGRUND-AUFGABEN (STRENG GEHEIM):"
-            conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide über das Fach. Nutze UNBEDINGT eines der folgenden Fächer: Mathematik, Deutsch, Englisch, Physik, Chemie, Biologie, Geschichte, Geographie, Informatik, Kunst, Musik, Sport, Religion, Ethik, Wirtschaft, Politik, Französisch, Latein, Spanisch. Falls es nicht eindeutig zugeordnet werden kann, nutze 'Allgemein'. Sende UNBEDINGT am Ende deiner Nachricht: <action>{\"type\": \"set_chat_subject\", \"subject\": \"Fachname\"}</action>. Erwähne dies NIEMALS im Text."
+            conversation_context += "\n1. FACH-ZUORDNUNG: Entscheide über das Fach. Nutze UNBEDINGT eines der folgenden Fächer: Deutsch, Mathematik, Englisch, Französisch, Spanisch, Latein, Italienisch, Russisch, Türkisch, Arabisch, Chinesisch, Japanisch, Kunst, Musik, Sport, Geschichte, Politik, Sozialkunde, Gemeinschaftskunde, Geografie, Erdkunde, Wirtschaft, Arbeitslehre, Technik, Informatik, Physik, Chemie, Biologie, Ethik, Religion, Philosophie, Astronomie, Darstellendes Spiel, Theater, Medienkunde, Hauswirtschaft, Textiles Gestalten, Werken, Technik und Design, Informatik und Medienbildung, Naturwissenschaften, Gesellschaftswissenschaften, Wirtschaft und Recht, Informatik und Mathematik, Verbraucherbildung, Berufsorientierung, Förderunterricht, Lernzeit, Klassenrat, Projektunterricht, Methodentraining, Präsentationstraining, Schreibwerkstatt, Leseförderung, Medienkompetenz, Informatik-Grundlagen, Programmieren, Robotik, 3D-Druck, Elektronik, Holztechnik, Metalltechnik, Elektrotechnik, Wirtschaftslehre, Betriebswirtschaft, Rechnungswesen, Buchführung, Recht, Pädagogik, Psychologie, Soziologie, Kriminalistik, Astronomie, Umweltkunde, Ökologie, Ernährungslehre, Gesundheit, Erste Hilfe, Verkehrserziehung, Informatikpraxis, Informatik und Technik, Geologie, Meteorologie, Meereskunde, Völkerkunde, Kulturkunde, Heimat- und Sachunterricht, Sachunterricht, Natur und Technik, Naturwissenschaft und Technik, Informatik und Gesellschaft, Informatiksysteme, Datenverarbeitung, Mediengestaltung, Fotografie, Filmkunde, Chor, Orchester, Ensemble, Instrumentalunterricht, Kunstgeschichte, Musikgeschichte, Tanz, Bewegung und Spiel, Schwimmen, Leichtathletik, Turnen, Basketball, Fußball, Volleyball, Handball, Tennis, Badminton, Fechten, Judo, Hockey, Schach, Schulgarten, Gartenbau, Landwirtschaft, Hauswirtschaft und Ernährung, Kochen, Nähen, Design, Gestalten, Basteln, Holzarbeiten, Metallarbeiten, Physikalische Experimente, Chemische Experimente, Biologische Übungen, Laborpraxis, Leseclub, Schreibkurs, Debattieren, Rhetorik, Journalismus, Schülerzeitung, Wirtschaft und Finanzen, Unternehmertum, Digitale Bildung, Künstliche Intelligenz, Robotik und Coding, Medienethik, Umweltbildung, Nachhaltigkeit, Verkehr, Freizeitpädagogik, Sonderpädagogik, Lernförderung, sonstige. Falls es nicht eindeutig zugeordnet werden kann, nutze 'sonstige'. Sende UNBEDINGT am Ende deiner Nachricht: <action>{\"type\": \"set_chat_subject\", \"subject\": \"Fachname\"}</action>. Erwähne dies NIEMALS im Text."
             
             if user_id:
                 current_name = us.get_session_name(user_id, chat_session_id)
@@ -385,7 +488,7 @@ def ask():
 
             # Finaler Entscheidungs-Check
             if math_solver_enabled:
-                 conversation_context += "\n\nENTSCHEIDUNGSMATRIX:\n- Mathe-Aufgabe? -> Lösung direkt nennen.\n- Deutsch/Sprachen/Sonstiges? -> Lösung NIEMALS nennen, nur Tipps geben (Guiding)."
+                 conversation_context += "\n\nENTSCHEIDUNGSMATRIX:\n- Mathe-Aufgabe? -> Lösung direkt nennen.\n- Deutsch/Sprachen/Sonstiges? -> Lösung NIEMALS nennen, nur Tipps geben (Guiding).\nWICHTIG: Handle laut Matrix, aber erwähne sie niemals gegenüber dem Benutzer!"
             else:
                  conversation_context += "\n\nENTSCHEIDUNGSMATRIX: Alle Fächer -> Nur Tipps geben (Guiding)."
 
@@ -505,6 +608,10 @@ def ask():
                     for res in res_list:
                         if not isinstance(res, dict): continue
                         if res.get('type') == 'homework_action':
+                            homework_action_processed = True
+                            if not homework_saving_announced and not client_disconnected:
+                                yield from yield_sse("HOMEWORK_SAVING")
+                                homework_saving_announced = True
                             action, hw_id = res.get('action'), res.get('id')
                             s_name = res.get('subject_name', '').strip()
                             s_id = us.get_subject_id_by_name(user_id, s_name) if s_name else None
@@ -514,16 +621,25 @@ def ask():
                             iso_due_date = convert_to_iso_date(res.get('due_date'))
 
                             if action == 'create':
-                                us.create_homework(user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
+                                created_hw = us.create_homework(user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
+                                if isinstance(created_hw, dict) and created_hw.get('id') and not homework_link_id:
+                                    homework_link_id = created_hw.get('id')
                                 homework_results.append(f"'{res.get('title')}' erstellt")
                             elif action == 'update' and hw_id:
                                 us.update_homework(hw_id, user_id, res.get('title'), iso_due_date, res.get('notes'), s_id)
+                                if not homework_link_id:
+                                    homework_link_id = hw_id
                                 homework_results.append(f"'{res.get('title')}' aktualisiert")
                             elif action == 'toggle' and hw_id:
                                 us.toggle_homework_status(hw_id, user_id)
+                                homework_results.append(f"'{hw_id}' umgeschaltet")
                             elif action == 'delete' and hw_id:
+                                deleted_title = next((hw.get('title') for hw in current_homework if hw.get('id') == hw_id), hw_id)
                                 us.delete_homework(hw_id, user_id)
+                                homework_results.append(f"'{deleted_title}' gelöscht")
                         elif res.get('type') == 'worksheet_creation':
+                            if calendar_entry_intent:
+                                continue
                             md_content = res.get('content')
                         elif res.get('type') == 'memory_action':
                             content, act = res.get('content'), res.get('action', 'add')
@@ -544,15 +660,15 @@ def ask():
                 except Exception: continue
 
             # Cleanup display text - Remove only internal markup, not regular brackets in text
-            display_text = re.sub(r'<action>[\s\S]*?</?action>', ' ', full_answer, flags=re.IGNORECASE)
+            display_text = re.sub(r'<action>[\s\S]*?</?action>', '', full_answer, flags=re.IGNORECASE)
             # Remove "thinking"/"thoughts" tags and similar internal markup only
-            display_text = re.sub(r'\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]', ' ', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'\{(?:gedanken|thoughts|thinking|internal)[^}]*\}', ' ', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'</?action/?>', ' ', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]', '', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\{(?:gedanken|thoughts|thinking|internal)[^}]*\}', '', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'</?action/?>', '', display_text, flags=re.IGNORECASE)
             
             # Only remove incomplete brackets/tags at end of text
-            display_text = re.sub(r'<action[\s\S]*$', ' ', display_text, flags=re.IGNORECASE)
-            display_text = re.sub(r'\{[^{}]*$', ' ', display_text)
+            display_text = re.sub(r'<action[\s\S]*$', '', display_text, flags=re.IGNORECASE)
+            display_text = re.sub(r'\{[^{}]*$', '', display_text)
             
             redundant_phrases = [
                 r'Bitte hab einen Moment Geduld, während ich es generiere\.', 
@@ -565,8 +681,21 @@ def ask():
             for phrase in redundant_phrases: 
                 display_text = re.sub(phrase, '', display_text, flags=re.IGNORECASE)
             
-            # Clean up whitespace
-            display_text = re.sub(r'\s+', ' ', display_text).strip()
+            # Clean up whitespace - keep newlines but trim start/end
+            display_text = display_text.strip()
+
+            if not display_text and homework_results:
+                if len(homework_results) == 1:
+                    display_text = f"Erledigt: {homework_results[0]}."
+                else:
+                    display_text = "Erledigt:\n- " + "\n- ".join(homework_results)
+
+            if calendar_entry_intent and not homework_action_processed and not homework_results:
+                display_text = (
+                    "Ich konnte den Kalendereintrag noch nicht wirklich speichern, "
+                    "weil kein gueltiges homework_action-Tag erzeugt wurde. "
+                    "Bitte nenne Titel und Datum noch einmal kurz, dann trage ich es korrekt ein."
+                )
 
             # --- SOFORTIGES SPEICHERN DER ANTWORT ---
             assistant_msg_idx = None
@@ -574,7 +703,7 @@ def ask():
                 initial_ws = 'PENDING' if md_content else None
                 assistant_msg_idx = us.save_chat_message(
                     user_id, chat_session_id, 'assistant', display_text,
-                    worksheet_filename=initial_ws, chat_subject=current_chat_subject
+                    worksheet_filename=initial_ws, homework_id=homework_link_id, chat_subject=current_chat_subject
                 )
                 print(f"DEBUG: Message saved for session {chat_session_id}")
 
@@ -603,6 +732,7 @@ def ask():
 
             if not client_disconnected:
                 if homework_results: yield from yield_sse("HOMEWORK_UPDATED")
+                if homework_link_id: yield from yield_sse(f"HOMEWORK_LINK:{homework_link_id}")
                 if pdf_basename: yield from yield_sse(f"WORKSHEET_DOWNLOAD_LINK:{pdf_basename}")
 
         except Exception as e:
@@ -790,17 +920,27 @@ def index():
     if user_type == 'it-admin':
         return redirect(url_for('admin_dashboard'))
 
-    # Create new chat session
+    # Create or retrieve chat session
     if user_id:
-        # For logged-in users, preserve session
         if 'chat_session_id' not in session:
-            new_id = str(uuid.uuid4())
-            session['chat_session_id'] = new_id
-            # We DON'T save to DB here anymore. Lazy creation.
+            # Check if user has existing sessions to resume one instead of always creating a new one
+            existing_sessions = us.get_user_chat_sessions(user_id)
+            if existing_sessions:
+                session['chat_session_id'] = existing_sessions[0]['session_id']
+            else:
+                new_id = str(uuid.uuid4())
+                session['chat_session_id'] = new_id
+                # Save welcome message to DB so it persists on refresh
+                welcome_content = "Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen! Ich werde dir nie die Lösung verraten, sondern dir helfen sie selbst herauszufinden."
+                us.save_chat_message(user_id, new_id, 'assistant', welcome_content)
     else:
         # For guests, preserve session if it exists
         if 'chat_session_id' not in session:
-            session['chat_session_id'] = str(uuid.uuid4())
+            new_id = str(uuid.uuid4())
+            session['chat_session_id'] = new_id
+            # Save welcome message for guest
+            welcome_content = "Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen! Ich werde dir nie die Lösung verraten, sondern dir helfen sie selbst herauszufinden."
+            us.save_chat_message(f"guest_{new_id}", new_id, 'assistant', welcome_content)
     
     # Cleanup old completed homework (24h) if logged in
     if user_id:
@@ -975,7 +1115,7 @@ def view_homework(homework_id):
 
     homework = us.get_single_homework(homework_id, session['user_id'])
     if not homework:
-        return redirect(url_for('index'))
+        return render_template('homework_deleted.html'), 404
 
     return render_template('view_homework.html', homework=homework)
 
