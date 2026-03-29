@@ -355,6 +355,7 @@
 </head>
 <body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen" data-authenticated="{{ 'false' if is_guest else 'true' }}">
     <input type="hidden" id="user-type" value="{{ user_type }}">
+    <input type="hidden" id="current-username" value="{{ username if username else '' }}">
 
     <!-- Mobile Overlay -->
     <div id="mobile-overlay" class="fixed top-16 right-0 bottom-0 left-0 bg-black bg-opacity-40 z-30 hidden"></div>
