@@ -1284,8 +1284,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const homeworkContextMenu = document.getElementById('homework-context-menu');
     const deleteHomeworkOption = document.getElementById('delete-homework');
 
-    const settingsBtn = document.getElementById('settings-btn');
-    const sidebarLegalBtn = document.getElementById('sidebar-legal-btn');
     const settingsView = document.getElementById('settings-view');
     const settingsHome = document.getElementById('settings-home');
     const memoriesSection = document.getElementById('memories-section');

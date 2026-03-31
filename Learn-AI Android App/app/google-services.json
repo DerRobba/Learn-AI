@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "537797126248",
+    "project_id": "learn-ai-l-ai-pro",
+    "storage_bucket": "learn-ai-l-ai-pro.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:537797126248:android:5b15916f9771f89233b3dd",
+        "android_client_info": {
+          "package_name": "com.malte_hinrichs.learn_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQ23TyKlevbYvmICLfQqPiSGZ_7VnC8A8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
