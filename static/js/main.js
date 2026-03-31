@@ -1,11 +1,13 @@
 document.addEventListener('DOMContentLoaded', function() {
     const userTypeEl = document.getElementById('user-type');
+    const currentUsernameEl = document.getElementById('current-username');
     // keep reference to the currently open EventSource so we can close
     // it before opening a new one. this prevents stray streams from
     // interfering with subsequent worksheet requests.
     let currentEventSource = null;
     const userType = userTypeEl ? userTypeEl.value : '';
     const isGuest = !userType || userType === 'None' || userType === '' || userType === 'guest';
+    const currentUsername = currentUsernameEl ? currentUsernameEl.value.trim() : '';
 
     // Session and Filter State (Declare early to avoid TDZ)
     let allChatSessions = [];
@@ -353,6 +355,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 
                 botMessageElement.querySelector('.flex-1').appendChild(actionContainer);
+            } else if (trimmedContent === "HOMEWORK_SAVING") {
+                showHomeworkLoading(botMessageElement.querySelector('.flex-1'));
+            } else if (trimmedContent.startsWith("HOMEWORK_LINK:")) {
+                const homeworkId = trimmedContent.substring("HOMEWORK_LINK:".length).trim();
+                appendHomeworkLink(botMessageElement.querySelector('.flex-1'), homeworkId);
             } else if (trimmedContent.startsWith("SESSION_TITLE:")) {
                 const newTitle = trimmedContent.substring("SESSION_TITLE:".length);
                 const activeSession = document.querySelector('.chat-session.bg-purple-100');
@@ -383,8 +390,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log("Arbeitsblatt-Generierung gestartet...");
                 showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
             } else if (trimmedContent === "HOMEWORK_UPDATED") {
-                // Reload or update specific UI part
-                setTimeout(() => location.reload(), 1500);
+                showHomeworkLoading(botMessageElement.querySelector('.flex-1'));
             } else {
                 fullAnswer += content;
 
@@ -393,12 +399,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     showWorksheetLoading(botMessageElement.querySelector('.flex-1'), worksheetLoadingIndicator);
                 }
 
-                // Remove finished action tags and replace with a single space
-                let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, ' ');
+                // Remove finished action tags and replace with empty string
+                let displayHTML = fullAnswer.replace(/<action>[\s\S]*?<\/action>/gi, '');
                 
                 // Remove thinking/internal tags
-                displayHTML = displayHTML.replace(/\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[\/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]/gi, ' ');
-                displayHTML = displayHTML.replace(/\{(?:gedanken|thoughts|thinking|internal)[^}]*\}/gi, ' ');
+                displayHTML = displayHTML.replace(/\[(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\][\s\S]*?\[\/(?:thinking|thoughts|gedanken|chain-of-thought|analysis)\]/gi, '');
+                displayHTML = displayHTML.replace(/\{(?:gedanken|thoughts|thinking|internal)[^}]*\}/gi, '');
 
                 // If we are currently inside an action tag or have a partial tag, hide ONLY the tag
                 // We use a temporary variable for the regex check to avoid mutating displayHTML incorrectly
@@ -420,14 +426,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 cleaningHTML = cleaningHTML.replace(/Bitte hab einen Moment Geduld\./gi, '');
                 cleaningHTML = cleaningHTML.replace(/Bitte gib mir einen Moment\./gi, '');
 
-                // Normalize whitespace for marked, but don't strip leading space if it separates words
-                cleaningHTML = cleaningHTML.replace(/\s+/g, ' ');
+                // Normalize whitespace for marked - keep newlines but collapse triple newlines to double
+                cleaningHTML = cleaningHTML.replace(/\n{3,}/g, '\n\n');
                 
                 // Trim leading whitespace only if it's the very start of the whole message
                 // and it was likely left over from a stripped "please wait" or tag
-                if (cleaningHTML.startsWith(' ')) {
-                    cleaningHTML = cleaningHTML.trimStart();
-                }
+                cleaningHTML = cleaningHTML.trimStart();
                 
                 botMessageElement.querySelector('.prose').innerHTML = marked.parse(cleaningHTML);
             }
@@ -582,16 +586,36 @@ document.addEventListener('DOMContentLoaded', function() {
         return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     }
 
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getCurrentUserPresentation() {
+        const displayName = currentUsername || 'Du';
+        const initial = displayName.charAt(0).toUpperCase() || 'D';
+
+        return {
+            displayName: escapeHtml(displayName),
+            initial: escapeHtml(initial)
+        };
+    }
+
     function addUserMessage(message, timestamp = null, image = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 justify-end chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
+        const userPresentation = getCurrentUserPresentation();
 
         let imagesHTML = '';
-        if (image) {
-            const imageArray = Array.isArray(image) ? image : [image];
-            const gridClass = `image-grid image-grid-${Math.min(imageArray.length, 4)}`;
-            
+        const imageArray = image ? (Array.isArray(image) ? image : [image]) : [];
+        
+        if (imageArray.length > 0) {
+            const gridClass = `image-grid image-grid-${Math.min(imageArray.length, 4)} mb-2`;
             imagesHTML = `<div class="${gridClass}">`;
             imageArray.forEach(imgData => {
                 let imageUrl = imgData;
@@ -604,15 +628,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         messageElement.innerHTML = `
-            <div class="flex flex-col items-end max-w-[80%] md:max-w-md">
-                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-br-sm shadow-md w-full">
+            <div class="flex flex-col items-end max-w-[85%] md:max-w-md">
+                <div class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-2xl rounded-tr-sm shadow-md border-2 border-purple-400 inline-block max-w-full">
                     ${imagesHTML}
-                    ${message ? `<p class="text-sm leading-relaxed">${message}</p>` : ''}
+                    ${message ? `<span class="text-sm leading-relaxed block whitespace-pre-wrap">${message.trim()}</span>` : ''}
                 </div>
-                <span class="text-xs text-gray-500 mt-1">Du • ${formatTime(time)}</span>
+                <div class="flex items-center space-x-1 mt-1 mr-1">
+                    <span class="text-xs text-gray-500">${formatTime(time)} • ${userPresentation.displayName}</span>
+                </div>
             </div>
-            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
-                <span class="material-symbols-outlined text-white text-sm">person</span>
+            <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm text-sm font-bold text-purple-600">
+                <span>${userPresentation.initial}</span>
             </div>
         `;
         chatHistory.appendChild(messageElement);
@@ -642,7 +668,61 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeFullscreenImage();
     });
-    function addBotMessage(message, timestamp = null, worksheet_filename = null) {
+    function appendHomeworkLink(container, homeworkId) {
+        if (!container || !homeworkId || container.querySelector(`[data-homework-link="${homeworkId}"]`)) {
+            return;
+        }
+
+        const loadingIndicator = container.querySelector('[data-homework-loading="true"]');
+        const renderLink = () => {
+            if (container.querySelector(`[data-homework-link="${homeworkId}"]`)) {
+                return;
+            }
+
+            if (loadingIndicator && loadingIndicator.parentNode) {
+                loadingIndicator.remove();
+            }
+
+            const actionContainer = document.createElement('div');
+            actionContainer.className = 'mt-3';
+            actionContainer.dataset.homeworkLink = homeworkId;
+
+            const showLink = document.createElement('a');
+            showLink.href = `/view-homework/${homeworkId}`;
+            showLink.className = 'inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 transition-colors';
+            showLink.innerHTML = '<span class="material-symbols-outlined text-sm mr-1">task_alt</span> Anzeigen';
+
+            actionContainer.appendChild(showLink);
+            container.appendChild(actionContainer);
+        };
+
+        if (loadingIndicator) {
+            const shownAt = Number(loadingIndicator.dataset.shownAt || Date.now());
+            const delay = Math.max(0, 500 - (Date.now() - shownAt));
+            setTimeout(renderLink, delay);
+            return;
+        }
+
+        renderLink();
+    }
+
+    function showHomeworkLoading(container) {
+        if (!container || container.querySelector('[data-homework-loading="true"]')) {
+            return;
+        }
+
+        const loadingElement = document.createElement('div');
+        loadingElement.className = 'mt-3 p-3 border border-emerald-100 rounded-xl bg-emerald-50/70 flex items-center space-x-3 text-emerald-700';
+        loadingElement.dataset.homeworkLoading = 'true';
+        loadingElement.dataset.shownAt = String(Date.now());
+        loadingElement.innerHTML = `
+            <span class="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+            <span class="text-sm font-medium">Hausaufgabe wird gespeichert...</span>
+        `;
+        container.appendChild(loadingElement);
+    }
+
+    function addBotMessage(message, timestamp = null, worksheet_filename = null, homework_id = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message';
         const time = timestamp ? new Date(timestamp) : new Date();
@@ -663,10 +743,15 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         chatHistory.appendChild(messageElement);
+        const messageContent = messageElement.querySelector('.flex-1');
+
+        if (homework_id) {
+            appendHomeworkLink(messageContent, homework_id);
+        }
 
         if (worksheet_filename === 'PENDING') {
             const indicatorRef = { val: null };
-            showWorksheetLoading(messageElement.querySelector('.flex-1'), indicatorRef);
+            showWorksheetLoading(messageContent, indicatorRef);
         } else if (worksheet_filename) {
             // Clean filename just in case
             const clean_filename = worksheet_filename.replace(/^.*[\\\/]/, '');
@@ -707,7 +792,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 scrollToBottom();
             };
             
-            messageElement.querySelector('.flex-1').appendChild(actionContainer);
+            messageContent.appendChild(actionContainer);
         }
 
         setTimeout(scrollToBottom, 100);
@@ -1145,7 +1230,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (msg.message_type === 'user') {
                         addUserMessage(msg.content, msg.created_at, msg.image_data);
                     } else if (msg.message_type === 'assistant') {
-                        addBotMessage(msg.content, msg.created_at, msg.worksheet_filename);
+                        addBotMessage(msg.content, msg.created_at, msg.worksheet_filename, msg.homework_id);
                     }
                 });
             }
@@ -1174,27 +1259,14 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data && data.session_id) {
                     currentSessionId = data.session_id;
-                    // Clear history and show welcome message LOCALLY
-                    chatHistory.innerHTML = `
-                        <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl chat-message">
-                            <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                <span class="material-symbols-outlined text-white text-lg">adb</span>
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex items-center space-x-2 mb-1">
-                                    <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
-                                    <span class="text-xs text-gray-500">Jetzt</span>
-                                </div>
-                                <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen!</p>
-                            </div>
-                        </div>
-                    `;
+                    // Clear history and show welcome message from DB (via the response)
+                    chatHistory.innerHTML = '';
+                    if (data.welcome_message) {
+                        addBotMessage(data.welcome_message);
+                    }
                     
-                    // Remove highlight from all sessions since this is a new, unsaved one
-                    document.querySelectorAll('.chat-session').forEach(s => {
-                        s.classList.remove('bg-purple-100', 'border-purple-300');
-                        s.classList.add('bg-gray-50');
-                    });
+                    // Always reload the full session list to show the new chat in sidebar
+                    loadAllChatSessionsAndRender();
 
                     // Close sidebar on mobile
                     if (window.innerWidth < 768 && sidebar.classList.contains('translate-x-0')) {
@@ -1233,24 +1305,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (msg.message_type === 'user') {
                                 addUserMessage(msg.content, msg.created_at, msg.image_data);
                             } else if (msg.message_type === 'assistant') {
-                                addBotMessage(msg.content, msg.created_at, msg.worksheet_filename);
+                                addBotMessage(msg.content, msg.created_at, msg.worksheet_filename, msg.homework_id);
                             }
                         });
-                    } else {
-                        chatHistory.innerHTML = `
-                            <div class="flex space-x-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl">
-                                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                    <span class="material-symbols-outlined text-white text-lg">adb</span>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="flex items-center space-x-2 mb-1">
-                                        <span class="text-sm font-semibold text-purple-700">KI-Assistent</span>
-                                        <span class="text-xs text-gray-500">Jetzt</span>
-                                    </div>
-                                    <p class="text-gray-700">Hi! Ich bin dein persönlicher Lernassistent. Sprich mit mir oder schreibe mir deine Fragen! Ich werde dir nie die Lösung verraten, sondern dir helfen sie selbst herauszufinden.</p>
-                                </div>
-                            </div>
-                        `;
                     }
 
                     document.querySelectorAll('.chat-session').forEach(s => {
@@ -1305,6 +1362,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const openAgbBtn = document.getElementById('open-agb-btn');
 
     const mathSolverToggle = document.getElementById('math-solver-toggle');
+    let legalBackTarget = 'settings';
 
     // Download Data
     const downloadDataBtn = document.getElementById('download-data-btn');
@@ -1358,7 +1416,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             chatView.classList.add('hidden');
             settingsView.classList.remove('hidden');
-            showPrivacy(); // Directly show Legal section
+            showPrivacy(true); // Directly show Legal section from the sidebar
         });
     }
 
@@ -1407,6 +1465,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (agbSection) agbSection.classList.add('hidden');
     }
 
+    function returnFromSettingsToChat() {
+        settingsView.classList.add('hidden');
+        chatView.classList.remove('hidden');
+    }
+
     function showSettingsHome() {
         hideAllSettingsSections();
         settingsHome.classList.remove('hidden');
@@ -1434,15 +1497,11 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Rechtliches';
-        
-        if (fromSidebar || isGuest) {
-            backToSettingsHomeBtn.onclick = () => {
-                settingsView.classList.add('hidden');
-                chatView.classList.remove('hidden');
-            };
-        } else {
-            backToSettingsHomeBtn.onclick = showSettingsHome;
-        }
+
+        legalBackTarget = (fromSidebar || isGuest) ? 'chat' : 'settings';
+        backToSettingsHomeBtn.onclick = legalBackTarget === 'chat'
+            ? returnFromSettingsToChat
+            : showSettingsHome;
     }
 
     function showPrivacyPolicyText() {
@@ -1452,9 +1511,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Datenschutzerklärung';
         
-        // Use current back behavior to decide next back behavior
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     function showImpressum() {
@@ -1463,8 +1520,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Impressum';
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     function showAgb() {
@@ -1473,8 +1529,7 @@ document.addEventListener('DOMContentLoaded', function() {
         backToSettingsHomeBtn.classList.remove('hidden');
         backToChatBtn.classList.add('hidden');
         settingsTitle.textContent = 'Nutzungsbedingungen';
-        const currentlyFromSidebar = backToSettingsHomeBtn.onclick && !backToSettingsHomeBtn.onclick.toString().includes('showSettingsHome');
-        backToSettingsHomeBtn.onclick = () => showPrivacy(currentlyFromSidebar);
+        backToSettingsHomeBtn.onclick = () => showPrivacy(legalBackTarget === 'chat');
     }
 
     if (openMemoriesBtn) openMemoriesBtn.addEventListener('click', showMemories);
@@ -1594,15 +1649,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (backToChatBtn) {
         backToChatBtn.addEventListener('click', () => {
-            settingsView.classList.add('hidden');
-            chatView.classList.remove('hidden');
+            returnFromSettingsToChat();
         });
     }
 
     if (closeSettingsBtn) {
         closeSettingsBtn.addEventListener('click', () => {
-            settingsView.classList.add('hidden');
-            chatView.classList.remove('hidden');
+            returnFromSettingsToChat();
         });
     }
     
@@ -1610,8 +1663,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (chatsTabBtn) {
         const originalChatTabClick = chatsTabBtn.onclick; // Preserve existing logic if any (added via addEventListener above)
         chatsTabBtn.addEventListener('click', () => {
-             settingsView.classList.add('hidden');
-             chatView.classList.remove('hidden');
+             returnFromSettingsToChat();
         });
     }
 
