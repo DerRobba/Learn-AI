@@ -10,6 +10,7 @@ import uuid
 import shutil
 import threading
 from datetime import datetime, timedelta
+import bcrypt
 
 USERS_DIR = 'users'
 INDEX_FILE = os.path.join(USERS_DIR, 'index.json')
@@ -55,6 +56,12 @@ def _save_index(index):
     _ensure_users_dir()
     _save_json(INDEX_FILE, index)
 
+def hash_pw(password):
+    global bcrypt_salt
+    bcrypt_salt = bcrypt.gensalt()
+    password_bytes = password.encode('utf-8')
+    return bcrypt.hashpw(password_bytes, bcrypt_salt)
+
 
 # ---------------------------------------------------------------------------
 # User management
@@ -78,11 +85,13 @@ def create_user(username, password, user_type, school=None):
         user_dir = get_user_dir(user_uuid)
         os.makedirs(user_dir, exist_ok=True)
 
+        hashed_pw = hash_pw(password).decode('utf-8')
+
         now = datetime.now().isoformat()
         user_data = {
             'uuid': user_uuid,
             'username': username,
-            'password': password,
+            'password': hashed_pw,
             'user_type': user_type,
             'school': school,
             'class_name': None,
@@ -118,7 +127,8 @@ def get_user(username, password):
     if not uid:
         return None
     user = _load_user(uid)
-    if user and user.get('password') == password:
+    hashed_pw = bcrypt.checkpw(password.encode('utf-8'), user.get('password').encode('utf-8'))
+    if user and hashed_pw == True:
         return user
     return None
 
@@ -685,6 +695,40 @@ def export_user_data(user_uuid):
         'subjects': _load_subjects(user_uuid),
         'memories': _load_memories(user_uuid),
     }
+
+
+# ---------------------------------------------------------------------------
+# Notification helpers
+# ---------------------------------------------------------------------------
+
+def get_all_user_ids():
+    """Return list of all non-guest user UUIDs."""
+    return list(_load_index().values())
+
+
+def get_students_for_class(class_name: str, school: str):
+    """Return list of student user dicts for the given class and school."""
+    students = []
+    for uid in _load_index().values():
+        u = _load_user(uid)
+        if u and u.get('user_type') == 'student' and u.get('class_name') == class_name and u.get('school') == school:
+            students.append(u)
+    return students
+
+
+def get_fcm_token(user_id: str):
+    """Return the FCM device token for a user, or None if not set."""
+    u = _load_user(user_id)
+    return u.get('fcm_token') if u else None
+
+
+def set_fcm_token(user_id: str, token: str):
+    """Store the FCM device token for a user."""
+    with _lock:
+        u = _load_user(user_id)
+        if u:
+            u['fcm_token'] = token
+            _save_user(user_id, u)
 
 
 # ---------------------------------------------------------------------------
