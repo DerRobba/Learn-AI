@@ -17,7 +17,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
-import com.google.firebase.messaging.FirebaseMessaging
 
 
 class MainActivity : AppCompatActivity() {
@@ -39,28 +38,6 @@ class MainActivity : AppCompatActivity() {
             filePathCallback?.onReceiveValue(uris)
             filePathCallback = null
         }
-
-    inner class AndroidBridge {
-        @JavascriptInterface
-        fun setNtfyTopic(topic: String) {
-            if (topic.isNotEmpty()) {
-                Log.d("NtfyBridge", "Starting ntfy service for topic: $topic")
-                startNtfyService(topic)
-            }
-        }
-    }
-
-    private fun startNtfyService(userTopic: String = "") {
-        val intent = Intent(this, NtfyListenerService::class.java)
-        if (userTopic.isNotEmpty()) {
-            intent.putExtra(NtfyListenerService.EXTRA_USER_TOPIC, userTopic)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,32 +82,9 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
 
-        // Register JS bridge so the web app can pass the user's ntfy topic to us
-        webView.addJavascriptInterface(AndroidBridge(), "AndroidApp")
-
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 return false
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                // Ask the server for this user's personal ntfy topic and forward it to the service
-                view?.evaluateJavascript(
-                    """
-                    (function() {
-                        fetch('/api/ntfy-topic')
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data && data.topic && typeof AndroidApp !== 'undefined') {
-                                    AndroidApp.setNtfyTopic(data.topic);
-                                }
-                            })
-                            .catch(function() {});
-                    })();
-                    """.trimIndent(),
-                    null
-                )
             }
         }
 
@@ -161,12 +115,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Start ntfy service for global channel immediately, user topic added after login
-        startNtfyService()
-
-        // Upload FCM token to Flask if needed
-        uploadFcmTokenIfNeeded()
-
         webView.loadUrl("https://dev.l-ai.pro?android_app=True")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -174,29 +122,6 @@ class MainActivity : AppCompatActivity() {
                 if (webView.canGoBack()) webView.goBack() else finish()
             }
         })
-    }
-
-    private fun uploadFcmTokenIfNeeded() {
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            val prefs = getSharedPreferences("fcm", MODE_PRIVATE)
-            val needsUpload = prefs.getBoolean("needs_upload", true)
-            val stored = prefs.getString("token", null)
-            if (needsUpload || stored != token) {
-                prefs.edit().putString("token", token).putBoolean("needs_upload", false).apply()
-                // Inject JS to POST the token once the page is loaded
-                webView.post {
-                    webView.evaluateJavascript("""
-                        (function() {
-                            fetch('/api/fcm-token', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({token: '$token'})
-                            }).catch(function(){});
-                        })();
-                    """.trimIndent(), null)
-                }
-            }
-        }
     }
 
     private fun startDownload(url: String) {
