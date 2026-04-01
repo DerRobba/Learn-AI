@@ -5,4 +5,4 @@ OpenAI
 flask-session
 markdown
 gunicorn
-bcryptfirebase-admin
+bcrypt

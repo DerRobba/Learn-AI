@@ -11,8 +11,6 @@ import time as time_module
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
-import firebase_admin
-from firebase_admin import credentials as fb_credentials, messaging as fb_messaging
 from dotenv import load_dotenv
 from openai import OpenAI
 from database import (
@@ -23,13 +21,6 @@ from database import (
 import user_storage as us
 
 load_dotenv()
-
-# Initialize Firebase Admin SDK for FCM
-_fb_key = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
-if os.path.exists(_fb_key):
-    firebase_admin.initialize_app(fb_credentials.Certificate(_fb_key))
-else:
-    print("[FCM] Warning: firebase-service-account.json not found, FCM disabled")
 
 # Migrate existing SQLite data to file-based storage (runs once)
 us.migrate_from_sqlite()
@@ -171,26 +162,6 @@ def api_get_chat_sessions_by_subject():
     sessions = us.get_chat_sessions_by_subject(session['user_id'], subject)
     return jsonify(sessions)
 
-@app.route('/api/ntfy-topic')
-def get_ntfy_topic_route():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'topic': None})
-    return jsonify({'topic': get_user_ntfy_topic(user_id), 'global': NTFY_GLOBAL_CHANNEL})
-
-
-@app.route('/api/fcm-token', methods=['POST'])
-def register_fcm_token():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'ok': False}), 401
-    data = request.get_json(silent=True) or {}
-    token = data.get('token', '').strip()
-    if token:
-        us.set_fcm_token(user_id, token)
-    return jsonify({'ok': True})
-
-
 # Initialize databases
 init_database()
 us._ensure_users_dir()
@@ -218,82 +189,6 @@ system_prompt = os.getenv("SYSTEM_PROMPT")
 
 ip_ban_list = os.getenv("IP_BAN_LIST", "").split(",")
 
-NTFY_SERVER = os.getenv("NTFY_SERVER", "https://ntfy.malte-hinrichs.de")
-NTFY_GLOBAL_CHANNEL = "Learn-AI-Notifications"
-
-
-def get_user_ntfy_topic(user_id: str) -> str:
-    return f"Learn-AI-{user_id[:8]}"
-
-
-def send_fcm_notification(user_id: str, title: str, body: str):
-    """Send FCM push notification to a user's registered device (non-blocking)."""
-    def _send():
-        try:
-            token = us.get_fcm_token(user_id)
-            if not token:
-                return
-            msg = fb_messaging.Message(
-                notification=fb_messaging.Notification(title=title, body=body),
-                token=token,
-            )
-            fb_messaging.send(msg)
-        except Exception as e:
-            print(f"[FCM] Notification failed for {user_id}: {e}")
-    threading.Thread(target=_send, daemon=True).start()
-
-
-def send_ntfy_notification(topic: str, title: str, message: str, tags: list = None, priority: str = "default"):
-    """Send a push notification via ntfy server (non-blocking, fire-and-forget)."""
-    def _send():
-        try:
-            payload = {"topic": topic, "title": title, "message": message, "priority": 3}
-            if tags:
-                payload["tags"] = tags
-            if priority == "high":
-                payload["priority"] = 4
-            elif priority == "urgent":
-                payload["priority"] = 5
-            requests.post(NTFY_SERVER, json=payload, timeout=5)
-        except Exception as e:
-            print(f"[ntfy] Notification failed ({topic}): {e}")
-    threading.Thread(target=_send, daemon=True).start()
-
-
-def _homework_reminder_loop():
-    """Background thread: sends ntfy reminders for homework due in 1 or 2 days (once per day)."""
-    sent_today: dict = {}
-    while True:
-        try:
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            if today_str not in sent_today:
-                sent_today = {today_str: set()}
-
-            tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-            day_after = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
-
-            for user_id in us.get_all_user_ids():
-                for hw in us.get_homework_for_user(user_id):
-                    if hw.get('completed'):
-                        continue
-                    due = hw.get('due_date', '')
-                    key = (user_id, hw.get('id', ''))
-                    if due in (tomorrow, day_after) and key not in sent_today[today_str]:
-                        day_word = "morgen" if due == tomorrow else "in 2 Tagen"
-                        _t = f"Hausaufgabe {day_word} fällig!"
-                        _b = f"'{hw.get('title', 'Hausaufgabe')}' ist {day_word} fällig."
-                        send_ntfy_notification(
-                            get_user_ntfy_topic(user_id), _t, _b,
-                            tags=["alarm_clock"], priority="high"
-                        )
-                        send_fcm_notification(user_id, _t, _b)
-                        sent_today[today_str].add(key)
-        except Exception as e:
-            print(f"[ntfy] Homework reminder error: {e}")
-        time_module.sleep(3600)  # check every hour
-
-
-threading.Thread(target=_homework_reminder_loop, daemon=True).start()
 
 
 @app.before_request
@@ -813,14 +708,6 @@ def ask():
                 if homework_results: yield from yield_sse("HOMEWORK_UPDATED")
                 if pdf_basename: yield from yield_sse(f"WORKSHEET_DOWNLOAD_LINK:{pdf_basename}")
 
-            if pdf_basename and user_id:
-                _ws_title = "Arbeitsblatt fertig!"
-                _ws_body = f"Dein Arbeitsblatt ({current_chat_subject or 'Allgemein'}) wurde erstellt und kann heruntergeladen werden."
-                send_ntfy_notification(
-                    get_user_ntfy_topic(user_id), _ws_title, _ws_body,
-                    tags=["page_facing_up"]
-                )
-                send_fcm_notification(user_id, _ws_title, _ws_body)
 
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
@@ -1115,19 +1002,6 @@ def create_assignment_route():
         school = session['school']
 
         create_assignment(title, description, user_id, class_name, school)
-
-        # Notify all students in the class via ntfy + FCM
-        try:
-            for student in us.get_students_for_class(class_name, school):
-                _sid = student['uuid']
-                _at = f"Neue Aufgabe: {title}"
-                _ab = description[:200] if description else ""
-                send_ntfy_notification(
-                    get_user_ntfy_topic(_sid), _at, _ab, tags=["books"]
-                )
-                send_fcm_notification(_sid, _at, _ab)
-        except Exception as _e:
-            print(f"[ntfy] Assignment notification error: {_e}")
 
         return redirect(url_for('index'))
 

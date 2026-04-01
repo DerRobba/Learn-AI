@@ -699,21 +699,6 @@ def get_students_for_class(class_name: str, school: str):
     return students
 
 
-def get_fcm_token(user_id: str):
-    """Return the FCM device token for a user, or None if not set."""
-    u = _load_user(user_id)
-    return u.get('fcm_token') if u else None
-
-
-def set_fcm_token(user_id: str, token: str):
-    """Store the FCM device token for a user."""
-    with _lock:
-        u = _load_user(user_id)
-        if u:
-            u['fcm_token'] = token
-            _save_user(user_id, u)
-
-
 # ---------------------------------------------------------------------------
 # Migration from SQLite
 # ---------------------------------------------------------------------------
