@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learn-AI Versionen</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="launcher-body">
+    <div class="launcher-shell">
+        <header class="main-header">
+            <div class="header-left">
+                <button type="button" class="icon-circle">
+                    <span class="material-symbols-outlined">neurology</span>
+                </button>
+                <div>
+                    <h1>Learn-AI</h1>
+                    <p>Versionen direkt starten, vergleichen und benutzen</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-layout">
+            <aside class="sidebar">
+                <div class="sidebar-top">
+                    <div>
+                        <h2>Versionen</h2>
+                        <p>Alle lauffähigen Versionen werden direkt gestartet.</p>
+                    </div>
+                    <span class="version-count">{{ versions|length }}</span>
+                </div>
+
+                <div class="version-stack" id="version-list">
+                    {% if versions %}
+                        {% for version in versions %}
+                            <button type="button" class="version-tile" data-version-name="{{ version.name }}">
+                                <div class="tile-shot">
+                                    {% if version.running and version.iframe_url %}
+                                        <div class="shot-scale">
+                                            <iframe src="{{ version.iframe_url }}" loading="lazy" title="{{ version.name }}"></iframe>
+                                        </div>
+                                    {% else %}
+                                        <div class="shot-fallback">
+                                            <span class="material-symbols-outlined">web_asset</span>
+                                            <strong>{{ version.name }}</strong>
+                                            <small>{{ version.last_error or 'Startet gerade oder konnte noch nicht geöffnet werden.' }}</small>
+                                        </div>
+                                    {% endif %}
+                                    <span class="live-dot {{ 'is-live' if version.running else 'is-offline' }}"></span>
+                                </div>
+                                <div class="tile-copy">
+                                    <div class="tile-title-row">
+                                        <h3>{{ version.name }}</h3>
+                                        <span class="tile-state">{{ 'Live' if version.running else 'Fehler' if version.last_error else 'Startet' }}</span>
+                                    </div>
+                                    <p>{{ version.description }}</p>
+                                </div>
+                            </button>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-box">
+                            <h3>Noch keine Versionen</h3>
+                            <p>Lege Ordner in <code>{{ versions_dir }}</code> ab.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </aside>
+
+            <main class="stage">
+                <div class="empty-box big-empty empty-chooser" id="empty-state">
+                    <div class="empty-chooser-icon">
+                        <span class="material-symbols-outlined">touch_app</span>
+                    </div>
+                    <h2>Version auswählen</h2>
+                    <p>Klicke links auf eine Vorschau, um die Web-App groß zu öffnen und direkt zu benutzen.</p>
+                </div>
+
+                <section class="stage-head hidden" id="detail-head">
+                    <div>
+                        <h2 id="detail-title"></h2>
+                    </div>
+                    <div class="stage-actions">
+                        <button type="button" class="gradient-button" id="restart-button" data-version-name="">
+                            <span class="material-symbols-outlined">replay</span>
+                            Neu starten
+                        </button>
+                    </div>
+                </section>
+
+                <div class="top-metrics hidden" id="detail-stats"></div>
+
+                <section class="preview-shell hidden" id="preview-shell">
+                    <div class="preview-frame-wrap" id="live-preview-frame"></div>
+                </section>
+
+                <section class="info-grid single-column hidden" id="log-section">
+                    <article class="info-card">
+                        <pre class="log-view" id="log-view">Noch keine Logs vorhanden.</pre>
+                    </article>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        window.__INITIAL_VERSION__ = null;
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
