@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anmeldung - Intelligenter Lernassistent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo-container">
+                <span class="material-symbols-outlined">adb</span>
+                <h1>Intelligenter Lernassistent</h1>
+            </div>
+
+            <h2>Anmeldung</h2>
+
+            {% if error %}
+            <div class="error-message">
+                <span class="material-symbols-outlined">warning</span>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="input-group">
+                    <label for="username">
+                        <span class="material-symbols-outlined">person_2</span>
+                        Benutzername
+                    </label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="password">
+                        <span class="material-symbols-outlined">lock</span>
+                        Passwort
+                    </label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+
+                <button type="submit" class="login-button">
+                    <span class="material-symbols-outlined">login</span>
+                    Anmelden
+                </button>
+            </form>
+
+            <div class="register-link">
+                <p>Noch kein Konto? <a href="{{ url_for('register') }}">Hier registrieren</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

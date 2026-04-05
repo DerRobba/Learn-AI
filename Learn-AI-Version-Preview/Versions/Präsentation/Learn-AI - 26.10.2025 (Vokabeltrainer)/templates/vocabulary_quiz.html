@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vokabeltrainer - Intelligenter Lernassistent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <!-- Header -->
+    <header class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-xl">school</span>
+                </div>
+                <h1 class="text-xl font-bold text-gray-800">Vokabeltrainer</h1>
+            </div>
+            <a href="{{ url_for('index') }}" class="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors duration-300">
+                <span class="material-symbols-outlined">arrow_back</span>
+                <span class="font-medium">Zurück</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <!-- Left Column: Add Vocabulary -->
+        <div class="bg-white p-8 rounded-2xl shadow-lg">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Vokabeln hinzufügen</h2>
+
+            <!-- Text Input -->
+            <div class="mb-6">
+                <label for="vocab-text-input" class="block text-sm font-medium text-gray-700 mb-2">Vokabeln per Text eingeben</label>
+                <textarea id="vocab-text-input" rows="4" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Beispiel: Hund:dog, Katze:cat, ..."></textarea>
+                <button id="add-text-vocab-btn" class="mt-3 w-full flex items-center justify-center space-x-2 bg-purple-600 text-white py-2.5 px-4 rounded-xl hover:bg-purple-700 transition-colors">
+                    <span class="material-symbols-outlined">add_task</span>
+                    <span>Text hinzufügen</span>
+                </button>
+            </div>
+            <p class="text-sm text-gray-500">Du kannst auch im Hauptchat die KI bitten, Vokabeln für dich hinzuzufügen.</p>
+
+        </div>
+
+        <!-- Manage Lists -->
+        <div class="bg-white p-8 rounded-2xl shadow-lg mt-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Vokabellisten verwalten</h2>
+
+            <!-- Save Current List -->
+            <div class="mb-6">
+                <label for="list-name-input" class="block text-sm font-medium text-gray-700 mb-2">Aktuelle Liste speichern unter:</label>
+                <input type="text" id="list-name-input" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Name der Liste">
+                <button id="save-list-btn" class="mt-3 w-full flex items-center justify-center space-x-2 bg-blue-600 text-white py-2.5 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
+                    <span class="material-symbols-outlined">save</span>
+                    <span>Liste speichern</span>
+                </button>
+            </div>
+
+            <!-- Load/Delete Existing Lists -->
+            <div>
+                <label for="saved-lists-select" class="block text-sm font-medium text-gray-700 mb-2">Gespeicherte Listen laden/löschen:</label>
+                <select id="saved-lists-select" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3">
+                    <option value="">-- Liste auswählen --</option>
+                </select>
+                <div class="flex space-x-2">
+                    <button id="load-list-btn" class="flex-1 flex items-center justify-center space-x-2 bg-green-600 text-white py-2.5 px-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
+                        <span class="material-symbols-outlined">folder_open</span>
+                        <span>Laden</span>
+                    </button>
+                    <button id="delete-list-btn" class="flex-1 flex items-center justify-center space-x-2 bg-red-600 text-white py-2.5 px-4 rounded-xl hover:bg-red-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
+                        <span class="material-symbols-outlined">delete</span>
+                        <span>Löschen</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Start Quiz -->
+        <div class="bg-white p-8 rounded-2xl shadow-lg">
+            <!-- Start Screen -->
+            <div id="vocab-start-screen">
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">Quiz starten</h2>
+                <p class="text-gray-600 mb-6">Sobald du Vokabeln hinzugefügt hast, kannst du hier dein Wissen testen.</p>
+                <button id="vocab-start-btn" class="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition-transform hover:scale-105 disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
+                    Quiz starten
+                </button>
+                <p id="vocab-count" class="text-center text-sm text-gray-500 mt-4">0 Vokabeln geladen.</p>
+            </div>
+
+            <!-- Quiz Screen (hidden by default) -->
+            <div id="vocab-quiz-screen" class="hidden">
+                <p class="text-sm text-gray-600 mb-2">Übersetze das folgende Wort:</p>
+                <div id="vocab-word" class="text-3xl font-bold text-center bg-gray-50 p-8 rounded-xl shadow-inner mb-4"></div>
+                <input type="text" id="vocab-input" class="w-full text-center text-lg px-4 py-3 border border-gray-300 rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Deine Antwort...">
+                <button id="vocab-check-btn" class="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700">Prüfen</button>
+                <div id="vocab-feedback" class="mt-4 text-center font-medium"></div>
+            </div>
+
+            <!-- Results Screen (hidden by default) -->
+            <div id="vocab-results-screen" class="hidden text-center">
+                <h3 class="text-2xl font-bold text-gray-900 mb-2">Quiz beendet!</h3>
+                <p id="vocab-score" class="text-xl text-gray-600 mb-6"></p>
+                <button id="vocab-restart-btn" class="w-full bg-purple-600 text-white py-3 rounded-xl hover:bg-purple-700">Neustart</button>
+            </div>
+        </div>
+
+        <!-- Display Current Vocabulary -->
+        <div class="bg-white p-8 rounded-2xl shadow-lg mt-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Deine Vokabeln</h2>
+            <ul id="current-vocab-list" class="space-y-2">
+                <!-- Vocab items will be injected here by JavaScript -->
+            </ul>
+            <p id="empty-vocab-message" class="text-gray-500 text-sm text-center mt-4 hidden">Noch keine Vokabeln hinzugefügt.</p>
+        </div>
+
+    </main>
+
+    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+</body>
+</html>

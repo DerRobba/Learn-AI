@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrierung - Intelligenter Lernassistent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo-container">
+                <span class="material-symbols-outlined">adb</span>
+                <h1>Intelligenter Lernassistent</h1>
+            </div>
+
+            <h2>Registrierung</h2>
+
+            {% if error %}
+            <div class="error-message">
+                <span class="material-symbols-outlined">warning</span>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="input-group">
+                    <label for="username">
+                        <span class="material-symbols-outlined">person_2</span>
+                        Benutzername
+                    </label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="password">
+                        <span class="material-symbols-outlined">lock</span>
+                        Passwort
+                    </label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+                <div class="user-type-selection">
+                    <label>Ich bin:</label>
+                    <div class="radio-group">
+                        <label class="radio-option it-admin-option">
+                            <input type="radio" name="user_type" value="it-admin" required>
+                            <div class="radio-content">
+                                <span class="material-symbols-outlined">admin_panel_settings</span>
+                                <span>IT-Admin</span>
+                            </div>
+                        </label>
+                        <label class="radio-option teacher-option">
+                            <input type="radio" name="user_type" value="teacher" required>
+                            <div class="radio-content">
+                                <span class="material-symbols-outlined">person_2</span>
+                                <span>Lehrer</span>
+                            </div>
+                        </label>
+                        <label class="radio-option student-option">
+                            <input type="radio" name="user_type" value="student" required>
+                            <div class="radio-content">
+                                <span class="material-symbols-outlined">school</span>
+                                <span>Schüler</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="input-group" id="school-group" style="display: none;">
+                    <label for="school">
+                        <span class="material-symbols-outlined">apartment</span>
+                        Schule
+                    </label>
+                    <input type="text" id="school" name="school">
+                </div>
+
+                <button type="submit" class="login-button">
+                    <span class="material-symbols-outlined">login</span>
+                    Registrieren
+                </button>
+            </form>
+
+            <div class="register-link">
+                <p>Bereits ein Konto? <a href="{{ url_for('login') }}">Hier anmelden</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('input[name="user_type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'it-admin') {
+                    document.getElementById('school-group').style.display = 'block';
+                    document.getElementById('school').required = true;
+                } else {
+                    document.getElementById('school-group').style.display = 'none';
+                    document.getElementById('school').required = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
