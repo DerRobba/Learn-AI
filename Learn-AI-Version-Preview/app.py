@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import atexit
+import hashlib
+import json
 import mimetypes
 import os
 import socket
@@ -11,13 +13,14 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
-from flask import Flask, abort, jsonify, render_template, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
 BASE_DIR = Path(__file__).resolve().parent
 VERSIONS_DIR = BASE_DIR / "Versions"
+SETTINGS_FILE = BASE_DIR / "launcher_settings.json"
 TEXT_EXTENSIONS = {".css", ".env", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".xml", ".yaml", ".yml"}
 IMPORTANT_FILES = [
     "README.md",
@@ -38,19 +41,105 @@ RUNNING_APPS: dict[str, dict[str, Any]] = {}
 PROCESS_LOCK = threading.Lock()
 LAST_START_ERRORS: dict[str, str] = {}
 LOG_LIMIT = 500
+DEFAULT_SETTINGS: dict[str, Any] = {"auto_start_folders": []}
 
 
 def ensure_versions_dir() -> None:
     VERSIONS_DIR.mkdir(exist_ok=True)
 
 
-def safe_version_dir(version_name: str) -> Path:
-    target = (VERSIONS_DIR / version_name).resolve()
+def normalize_relative_path(path_value: str | None) -> str:
+    if not path_value:
+        return ""
+    normalized = str(PurePosixPath(path_value.replace("\\", "/").strip()))
+    if normalized in {".", "/"}:
+        return ""
+    normalized = normalized.lstrip("/")
+    if normalized.startswith("..") or "/.." in normalized:
+        raise FileNotFoundError
+    return normalized
+
+
+def safe_versions_child(relative_path: str | None) -> Path:
+    safe_relative = normalize_relative_path(relative_path)
+    target = (VERSIONS_DIR / safe_relative).resolve()
     try:
         target.relative_to(VERSIONS_DIR.resolve())
     except ValueError as exc:
         raise FileNotFoundError from exc
     if not target.exists() or not target.is_dir():
+        raise FileNotFoundError
+    return target
+
+
+def to_relative_path(target: Path) -> str:
+    return target.relative_to(VERSIONS_DIR).as_posix()
+
+
+def parse_env_files(*env_paths: Path) -> dict[str, str]:
+    env_values: dict[str, str] = {}
+    for env_path in env_paths:
+        if not env_path.exists() or not env_path.is_file():
+            continue
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key.startswith("export "):
+                key = key[7:].strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                env_values[key] = value
+    return env_values
+
+
+def load_shared_env() -> dict[str, str]:
+    return parse_env_files(BASE_DIR / ".env", BASE_DIR / ".flaskenv")
+
+
+def build_child_env(version_dir: Path) -> dict[str, str]:
+    child_env = {
+        **os.environ,
+        **load_shared_env(),
+        "PYTHONUTF8": "1",
+        "FLASK_SKIP_DOTENV": "1",
+    }
+
+    # Many archived Flask versions share the same default secret key and cookie name.
+    # That makes them read each other's session cookie on 127.0.0.1 and can trigger
+    # broken state or 500 errors when switching between previews. Give each version a
+    # stable per-project secret unless one was explicitly configured.
+    if not child_env.get("SECRET_KEY"):
+        secret_seed = f"{BASE_DIR.resolve()}::{version_dir.resolve()}"
+        child_env["SECRET_KEY"] = hashlib.sha256(secret_seed.encode("utf-8")).hexdigest()
+
+    if child_env.get("OPENAI_API_KEY") and not child_env.get("API_KEY"):
+        child_env["API_KEY"] = child_env["OPENAI_API_KEY"]
+    if child_env.get("API_KEY") and not child_env.get("OPENAI_API_KEY"):
+        child_env["OPENAI_API_KEY"] = child_env["API_KEY"]
+
+    if child_env.get("OPENAI_BASE_URL") and not child_env.get("BASE_URL"):
+        child_env["BASE_URL"] = child_env["OPENAI_BASE_URL"]
+    if child_env.get("BASE_URL") and not child_env.get("OPENAI_BASE_URL"):
+        child_env["OPENAI_BASE_URL"] = child_env["BASE_URL"]
+
+    if child_env.get("OPENAI_MODEL") and not child_env.get("MODEL"):
+        child_env["MODEL"] = child_env["OPENAI_MODEL"]
+    if child_env.get("MODEL") and not child_env.get("OPENAI_MODEL"):
+        child_env["OPENAI_MODEL"] = child_env["MODEL"]
+
+    return child_env
+
+
+def safe_version_dir(version_name: str) -> Path:
+    target = safe_versions_child(version_name)
+    if not (target / "app.py").exists():
         raise FileNotFoundError
     return target
 
@@ -134,8 +223,103 @@ def read_text_file(path: Path | None) -> str | None:
     except OSError:
         return None
     if len(content) > MAX_TEXT_LENGTH:
-        return content[:MAX_TEXT_LENGTH] + "\n\n... Vorschau gekuerzt ..."
+        return content[:MAX_TEXT_LENGTH] + "\n\n... Vorschau gekürzt ..."
     return content
+
+
+def load_launcher_settings() -> dict[str, Any]:
+    if not SETTINGS_FILE.exists():
+        settings = dict(DEFAULT_SETTINGS)
+        save_launcher_settings(settings)
+        return settings
+    try:
+        raw = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        settings = dict(DEFAULT_SETTINGS)
+        save_launcher_settings(settings)
+        return settings
+
+    auto_start_folders = []
+    for folder in raw.get("auto_start_folders", []):
+        try:
+            auto_start_folders.append(normalize_relative_path(folder))
+        except FileNotFoundError:
+            continue
+    settings = {"auto_start_folders": sorted(set(auto_start_folders))}
+    if raw.get("auto_start_folders") != settings["auto_start_folders"]:
+        save_launcher_settings(settings)
+    return settings
+
+
+def save_launcher_settings(settings: dict[str, Any]) -> None:
+    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_auto_start_folders() -> set[str]:
+    return set(load_launcher_settings().get("auto_start_folders", []))
+
+
+def set_folder_auto_start(folder_path: str, enabled: bool) -> dict[str, Any]:
+    safe_versions_child(folder_path)
+    settings = load_launcher_settings()
+    folders = set(settings.get("auto_start_folders", []))
+    normalized = normalize_relative_path(folder_path)
+    if enabled:
+        folders.add(normalized)
+    else:
+        folders.discard(normalized)
+    settings["auto_start_folders"] = sorted(folders)
+    save_launcher_settings(settings)
+    return settings
+
+
+def is_version_dir(path: Path) -> bool:
+    return (path / "app.py").exists()
+
+
+def iter_container_dirs(folder_dir: Path) -> list[Path]:
+    try:
+        children = [child for child in folder_dir.iterdir() if child.is_dir()]
+    except OSError:
+        return []
+    return sorted(children, key=lambda path: path.name.lower())
+
+
+def list_all_version_dirs(root_dir: Path | None = None) -> list[Path]:
+    current_root = root_dir or VERSIONS_DIR
+    version_dirs: list[Path] = []
+    for child in iter_container_dirs(current_root):
+        if is_version_dir(child):
+            version_dirs.append(child)
+        else:
+            version_dirs.extend(list_all_version_dirs(child))
+    return version_dirs
+
+
+def folder_contains_auto_start(folder_path: str, auto_start_folders: set[str]) -> bool:
+    if not folder_path:
+        return bool(auto_start_folders)
+    prefix = f"{folder_path}/" if folder_path else ""
+    for configured in auto_start_folders:
+        if configured == folder_path:
+            return True
+        if folder_path and configured.startswith(prefix):
+            return True
+    return False
+
+
+def should_auto_start_version(version_dir: Path, auto_start_folders: set[str] | None = None) -> bool:
+    configured = auto_start_folders if auto_start_folders is not None else get_auto_start_folders()
+    relative = to_relative_path(version_dir)
+    parts = relative.split("/")
+    folder_parts = parts[:-1]
+    if not folder_parts:
+        return "" in configured
+    for length in range(len(folder_parts), 0, -1):
+        candidate = "/".join(folder_parts[:length])
+        if candidate in configured:
+            return True
+    return "" in configured
 
 
 def clean_dead_processes() -> None:
@@ -226,8 +410,6 @@ def build_runtime_state(version_name: str) -> dict[str, Any]:
 
 def start_version_process(version_name: str) -> dict[str, Any]:
     version_dir = safe_version_dir(version_name)
-    if not (version_dir / "app.py").exists():
-        raise RuntimeError("In dieser Version wurde keine app.py gefunden.")
 
     with PROCESS_LOCK:
         clean_dead_processes()
@@ -253,7 +435,7 @@ def start_version_process(version_name: str) -> dict[str, Any]:
                 "--no-reload",
             ],
             cwd=str(version_dir),
-            env={**os.environ, "PYTHONUTF8": "1"},
+            env=build_child_env(version_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -319,14 +501,21 @@ def ensure_version_started(version_name: str) -> None:
 
 def ensure_versions_started(version_dirs: list[Path]) -> None:
     for version_dir in version_dirs:
-        ensure_version_started(version_dir.name)
+        ensure_version_started(to_relative_path(version_dir))
+
+
+def start_all_versions_on_boot() -> None:
+    auto_start_folders = get_auto_start_folders()
+    versions = [version_dir for version_dir in list_all_version_dirs() if should_auto_start_version(version_dir, auto_start_folders)]
+    ensure_versions_started(versions)
 
 
 atexit.register(cleanup_all_processes)
 
 
 def build_version_detail(version_dir: Path) -> dict[str, Any]:
-    runtime = build_runtime_state(version_dir.name)
+    version_path = to_relative_path(version_dir)
+    runtime = build_runtime_state(version_path)
     tree, file_count, dir_count, total_size = summarize_tree(version_dir)
     stat = version_dir.stat()
     readme_path = find_first([version_dir / "README.md", version_dir / "readme.md"])
@@ -339,6 +528,8 @@ def build_version_detail(version_dir: Path) -> dict[str, Any]:
 
     return {
         "name": version_dir.name,
+        "path": version_path,
+        "folder_path": normalize_relative_path(str(PurePosixPath(version_path).parent)),
         "tags": detect_stack(version_dir),
         "updated_at": datetime.fromtimestamp(stat.st_mtime).strftime("%d.%m.%Y %H:%M"),
         "file_count": file_count,
@@ -349,8 +540,8 @@ def build_version_detail(version_dir: Path) -> dict[str, Any]:
         "preview_file": preview_file.relative_to(version_dir).as_posix() if preview_file else None,
         "preview_content": read_text_file(preview_file),
         "important_files": important_files,
-        "logs": RUNNING_APPS.get(version_dir.name, {}).get("logs", []),
-        "is_runnable": (version_dir / "app.py").exists(),
+        "logs": RUNNING_APPS.get(version_path, {}).get("logs", []),
+        "is_runnable": True,
         **runtime,
     }
 
@@ -363,6 +554,8 @@ def build_version_card(version_dir: Path) -> dict[str, Any]:
         description = compact[:120] + ("..." if len(compact) > 120 else "")
     return {
         "name": detail["name"],
+        "path": detail["path"],
+        "folder_path": detail["folder_path"],
         "tags": detail["tags"],
         "updated_at": detail["updated_at"],
         "file_count": detail["file_count"],
@@ -377,51 +570,144 @@ def build_version_card(version_dir: Path) -> dict[str, Any]:
     }
 
 
-def list_version_dirs() -> list[Path]:
+def build_folder_node(folder_dir: Path, auto_start_folders: set[str], is_root: bool = False) -> dict[str, Any]:
+    folder_path = "" if is_root else to_relative_path(folder_dir)
+    child_folders: list[dict[str, Any]] = []
+    versions: list[dict[str, Any]] = []
+
+    for child in iter_container_dirs(folder_dir):
+        if is_version_dir(child):
+            versions.append(build_version_card(child))
+        else:
+            child_folders.append(build_folder_node(child, auto_start_folders))
+
+    latest_timestamp = None
+    try:
+        latest_timestamp = folder_dir.stat().st_mtime
+    except OSError:
+        latest_timestamp = None
+
+    for version in versions:
+        parsed = datetime.strptime(version["updated_at"], "%d.%m.%Y %H:%M")
+        candidate = parsed.timestamp()
+        latest_timestamp = max(latest_timestamp or candidate, candidate)
+
+    for child_folder in child_folders:
+        raw = child_folder.get("updated_at_raw")
+        if raw is not None:
+            latest_timestamp = max(latest_timestamp or raw, raw)
+
+    total_versions = len(versions) + sum(child["version_count_total"] for child in child_folders)
+
+    return {
+        "name": "Versions" if is_root else folder_dir.name,
+        "path": folder_path,
+        "is_root": is_root,
+        "auto_start": folder_path in auto_start_folders,
+        "auto_start_contains_selected": folder_contains_auto_start(folder_path, auto_start_folders),
+        "updated_at": datetime.fromtimestamp(latest_timestamp).strftime("%d.%m.%Y %H:%M") if latest_timestamp else "-",
+        "updated_at_raw": latest_timestamp,
+        "folder_count": len(child_folders),
+        "version_count": len(versions),
+        "version_count_total": total_versions,
+        "folders": child_folders,
+        "versions": versions,
+    }
+
+
+def build_versions_tree() -> dict[str, Any]:
     ensure_versions_dir()
-    return sorted([path for path in VERSIONS_DIR.iterdir() if path.is_dir()], key=lambda path: path.stat().st_mtime, reverse=True)
+    return build_folder_node(VERSIONS_DIR, get_auto_start_folders(), is_root=True)
 
 
 @app.route("/")
 def index() -> str:
     clean_dead_processes()
-    versions = list_version_dirs()
-    ensure_versions_started(versions)
-    cards = [build_version_card(path) for path in versions]
+    folder_tree = build_versions_tree()
     initial_detail = None
-    return render_template("index.html", versions=cards, initial_detail=initial_detail, versions_dir=str(VERSIONS_DIR))
+    return render_template(
+        "index.html",
+        folder_tree=folder_tree,
+        initial_detail=initial_detail,
+        versions_dir=str(VERSIONS_DIR),
+    )
 
 
-@app.route("/api/versions")
-def versions_list():
+@app.route("/version/<path:version_name>")
+def version_page(version_name: str) -> str:
+    try:
+        normalized = normalize_relative_path(version_name)
+        version_dir = safe_version_dir(normalized)
+    except FileNotFoundError:
+        abort(404)
+
+    if not build_runtime_state(normalized)["running"]:
+        try:
+            start_version_process(normalized)
+        except RuntimeError:
+            pass
+
+    detail = build_version_detail(version_dir)
+    return render_template("version.html", detail=detail)
+
+
+@app.route("/api/tree")
+def versions_tree():
     clean_dead_processes()
-    versions = list_version_dirs()
-    ensure_versions_started(versions)
-    return jsonify([build_version_card(path) for path in versions])
+    return jsonify(build_versions_tree())
 
 
 @app.route("/api/versions/<path:version_name>")
 def version_detail(version_name: str):
     try:
-        ensure_version_started(version_name)
         version_dir = safe_version_dir(version_name)
     except FileNotFoundError:
         abort(404)
     return jsonify(build_version_detail(version_dir))
+
+
+@app.route("/api/versions/<path:version_name>/start", methods=["POST"])
+def version_start(version_name: str):
+    try:
+        version_dir = safe_version_dir(version_name)
+        detail = start_version_process(normalize_relative_path(version_name))
+    except FileNotFoundError:
+        abort(404)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 400
+    payload = build_version_detail(version_dir)
+    payload.update(detail)
+    return jsonify(payload)
 
 
 @app.route("/api/versions/<path:version_name>/restart", methods=["POST"])
 def version_restart(version_name: str):
     try:
-        version_dir = safe_version_dir(version_name)
+        normalized = normalize_relative_path(version_name)
+        version_dir = safe_version_dir(normalized)
     except FileNotFoundError:
         abort(404)
-    stop_version_process(version_name)
+    stop_version_process(normalized)
     try:
-        start_version_process(version_name)
+        start_version_process(normalized)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(build_version_detail(version_dir))
+
+
+@app.route("/api/folders/autostart", methods=["POST"])
+def folder_autostart():
+    payload = request.get_json(silent=True) or {}
+    folder_path = payload.get("folder_path", "")
+    enabled = bool(payload.get("enabled"))
+    try:
+        settings = set_folder_auto_start(folder_path, enabled)
+        folder_dir = safe_versions_child(folder_path)
+    except FileNotFoundError:
+        abort(404)
+    if enabled:
+        ensure_versions_started([version_dir for version_dir in list_all_version_dirs(folder_dir) if should_auto_start_version(version_dir, set(settings["auto_start_folders"]))])
+    return jsonify(build_versions_tree())
 
 
 @app.route("/api/versions/<path:version_name>/file/<path:file_path>")
@@ -462,6 +748,8 @@ def preview_asset(version_name: str, file_path: str):
 
 if __name__ == "__main__":
     ensure_versions_dir()
+    load_launcher_settings()
+    start_all_versions_on_boot()
     app.run(debug=False, port=5000, use_reloader=False)
 
 

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_title }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(16px);
+        }
+
+        .message-html p {
+            margin-bottom: 0.75rem;
+            line-height: 1.7;
+        }
+
+        .message-html p:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-html ul,
+        .message-html ol {
+            margin: 0.75rem 0;
+            padding-left: 1.3rem;
+        }
+
+        .message-html li {
+            margin-bottom: 0.35rem;
+        }
+
+        .scroll-soft::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scroll-soft::-webkit-scrollbar-thumb {
+            background: rgba(167, 139, 250, 0.55);
+            border-radius: 999px;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-slate-800">
+    <div class="min-h-screen">
+        <header class="px-4 sm:px-6 pt-6">
+            <div class="max-w-7xl mx-auto glass-card rounded-[28px] shadow-2xl shadow-purple-900/20 px-5 py-4 sm:px-7 sm:py-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 text-white flex items-center justify-center shadow-lg shadow-purple-500/30">
+                        <span class="material-symbols-outlined text-3xl">neurology</span>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold uppercase tracking-[0.24em] text-purple-500">Learn-AI Style</p>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-500 bg-clip-text text-transparent">
+                            {{ app_title }}
+                        </h1>
+                        <p class="text-sm sm:text-base text-slate-500">Vergleiche Basismodell und Fine-Tune mit demselben Prompt-Verlauf.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
+                    <div class="rounded-2xl bg-purple-50 border border-purple-100 px-4 py-3 min-w-[240px]">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-semibold text-slate-700">{{ statuses.original.label }}</span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full bg-purple-100 text-purple-700">{{ statuses.original.badge }}</span>
+                        </div>
+                        <p class="text-sm text-slate-500 break-all">{{ statuses.original.model }}</p>
+                        <p class="text-xs text-slate-400 mt-1 break-all">{{ statuses.original.base_url }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-pink-50 border border-pink-100 px-4 py-3 min-w-[240px]">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-semibold text-slate-700">{{ statuses.tuned.label }}</span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full bg-pink-100 text-pink-700">{{ statuses.tuned.badge }}</span>
+                        </div>
+                        <p class="text-sm text-slate-500 break-all">{{ statuses.tuned.model }}</p>
+                        <p class="text-xs text-slate-400 mt-1 break-all">{{ statuses.tuned.base_url }}</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="px-4 sm:px-6 py-6">
+            <div class="max-w-7xl mx-auto grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+                <section class="glass-card rounded-[32px] shadow-2xl shadow-purple-900/15 p-5 sm:p-6 space-y-5 h-fit">
+                    <div>
+                        <p class="text-sm font-semibold uppercase tracking-[0.2em] text-purple-500">Konfiguration</p>
+                        <h2 class="text-2xl font-bold text-slate-800 mt-2">Ein Prompt, zwei Antworten</h2>
+                        <p class="text-sm text-slate-500 mt-2">Die Modelle bekommen dieselben Nutzer-Prompts und denselben System Prompt. So siehst du Unterschiede direkt nebeneinander.</p>
+                    </div>
+
+                    <div class="rounded-3xl bg-slate-50 border border-slate-200 p-4">
+                        <label for="system-prompt" class="block text-sm font-semibold text-slate-700 mb-2">System Prompt</label>
+                        <textarea id="system-prompt" class="w-full min-h-[132px] rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-purple-200 focus:border-purple-400 resize-y text-sm">{{ system_prompt }}</textarea>
+                    </div>
+
+                    <div class="rounded-3xl bg-slate-50 border border-slate-200 p-4">
+                        <label for="prompt-input" class="block text-sm font-semibold text-slate-700 mb-2">Dein Prompt</label>
+                        <textarea id="prompt-input" class="w-full min-h-[180px] rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-pink-200 focus:border-pink-400 resize-y text-sm" placeholder="Zum Beispiel: Erklaere Photosynthese fuer eine 7. Klasse und gib am Ende drei Quizfragen."></textarea>
+                        <div class="mt-4 flex flex-col sm:flex-row gap-3">
+                            <button id="compare-button" class="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-500 text-white px-5 py-3 font-bold shadow-lg shadow-purple-500/30 hover:translate-y-[-1px] transition-all">
+                                <span class="material-symbols-outlined text-xl">compare_arrows</span>
+                                Antworten vergleichen
+                            </button>
+                            <button id="reset-button" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 text-slate-700 px-5 py-3 font-semibold hover:bg-slate-200 transition-colors">
+                                <span class="material-symbols-outlined text-xl">refresh</span>
+                                Verlauf leeren
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="hidden rounded-3xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm text-amber-800"></div>
+                </section>
+
+                <section class="space-y-6">
+                    <div class="glass-card rounded-[32px] shadow-2xl shadow-purple-900/15 p-5 sm:p-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-purple-500">Analyse</p>
+                                <h2 class="text-2xl font-bold text-slate-800 mt-2">Direkter Modellvergleich</h2>
+                            </div>
+                            <div id="comparison-summary" class="hidden rounded-2xl bg-gradient-to-r from-purple-100 to-pink-100 px-4 py-3 text-sm font-medium text-slate-700"></div>
+                        </div>
+                        <div id="empty-state" class="mt-6 rounded-[28px] border-2 border-dashed border-white/70 bg-white/50 p-10 text-center">
+                            <div class="w-16 h-16 rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-purple-500/30">
+                                <span class="material-symbols-outlined text-3xl">forum</span>
+                            </div>
+                            <h3 class="mt-5 text-xl font-bold text-slate-800">Noch kein Vergleich gestartet</h3>
+                            <p class="mt-2 text-sm text-slate-500 max-w-2xl mx-auto">Sobald du einen Prompt abschickst, erscheinen hier beide Antworten mit Laufzeit, Tokenwerten und einer kurzen Einordnung.</p>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-6 xl:grid-cols-2">
+                        <article class="glass-card rounded-[32px] shadow-2xl shadow-purple-900/15 overflow-hidden">
+                            <div class="px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between">
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-[0.18em] text-purple-500">Base</p>
+                                    <h3 class="text-xl font-bold text-slate-800">Originalmodell</h3>
+                                </div>
+                                <span class="material-symbols-outlined text-purple-500 text-3xl">account_tree</span>
+                            </div>
+                            <div class="p-5">
+                                <div id="original-metrics" class="hidden grid grid-cols-2 gap-3 mb-5"></div>
+                                <div id="original-response" class="message-html scroll-soft min-h-[320px] max-h-[720px] overflow-y-auto rounded-[28px] bg-slate-50 border border-slate-200 p-5 text-sm text-slate-700">
+                                    Die Antwort des Originalmodells erscheint hier.
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="glass-card rounded-[32px] shadow-2xl shadow-purple-900/15 overflow-hidden">
+                            <div class="px-5 py-4 border-b border-pink-100 bg-gradient-to-r from-pink-50 to-white flex items-center justify-between">
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-[0.18em] text-pink-500">Tuned</p>
+                                    <h3 class="text-xl font-bold text-slate-800">Fine-Tune</h3>
+                                </div>
+                                <span class="material-symbols-outlined text-pink-500 text-3xl">tune</span>
+                            </div>
+                            <div class="p-5">
+                                <div id="tuned-metrics" class="hidden grid grid-cols-2 gap-3 mb-5"></div>
+                                <div id="tuned-response" class="message-html scroll-soft min-h-[320px] max-h-[720px] overflow-y-auto rounded-[28px] bg-slate-50 border border-slate-200 p-5 text-sm text-slate-700">
+                                    Die Antwort des Fine-Tunes erscheint hier.
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+
+                    <section id="history-panel" class="hidden glass-card rounded-[32px] shadow-2xl shadow-purple-900/15 p-5 sm:p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-purple-500">Verlauf</p>
+                                <h2 class="text-xl font-bold text-slate-800 mt-2">Prompt-Verlauf</h2>
+                            </div>
+                            <span class="text-xs font-semibold px-3 py-1 rounded-full bg-purple-100 text-purple-700">User History</span>
+                        </div>
+                        <div id="history-list" class="mt-5 space-y-3"></div>
+                    </section>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        window.__APP_CONFIG__ = {
+            originalConfigured: {{ 'true' if statuses.original.configured else 'false' }},
+            tunedConfigured: {{ 'true' if statuses.tuned.configured else 'false' }}
+        };
+    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

@@ -1,1 +1,3 @@
-﻿Flask>=3.0,<4.0
+Flask>=3.0,<4.0
+elevenlabs
+gunicorn

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hausaufgabe bearbeiten - Learn-AI</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400">
+    <!-- Header -->
+    <header class="bg-white/95 backdrop-blur-xl shadow-lg border-b border-white/20">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-xl">neurology</span>
+                </div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
+                    Intelligenter Lernassistent
+                </h1>
+            </div>
+
+            <!-- Back Button -->
+            <a href="{{ url_for('view_homework', homework_id=homework.id) }}" class="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors duration-300">
+                <span class="material-symbols-outlined">arrow_back</span>
+                <span class="font-medium">Zurück</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto p-6">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20">
+            <div class="mb-8">
+                <div class="flex items-center space-x-4 mb-6">
+                    <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-3xl">edit</span>
+                    </div>
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-900">Hausaufgabe bearbeiten</h2>
+                        <p class="text-gray-600 mt-1">Ändere die Details deiner Hausaufgabe</p>
+                    </div>
+                </div>
+
+                {% if error %}
+                <div class="mb-6 flex items-center space-x-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                    <span class="material-symbols-outlined text-red-500">warning</span>
+                    <span class="text-sm font-medium">{{ error }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <form method="POST" class="space-y-8">
+                <!-- Title Section -->
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white">title</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-900">Titel</h3>
+                    </div>
+                    <input
+                        type="text"
+                        id="title"
+                        name="title"
+                        required
+                        value="{{ homework.title }}"
+                        class="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
+                        placeholder="Gib einen Titel für die Hausaufgabe ein..."
+                    >
+                </div>
+
+                <!-- Subject Section -->
+                <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white">school</span>
+                            </div>
+                            <h3 class="text-xl font-semibold text-gray-900">Fach</h3>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <select
+                            id="subject_id"
+                            name="subject_id"
+                            class="w-full px-4 py-3 bg-white border border-green-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 text-gray-900 appearance-none cursor-pointer"
+                        >
+                            <option value="">Kein Fach ausgewählt</option>
+                            {% for subject in subjects %}
+                                <option value="{{ subject.id }}" {% if homework.subject_id == subject.id %}selected{% endif %}>{{ subject.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none">
+                            <span class="material-symbols-outlined text-gray-500">expand_more</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Due Date Section -->
+                <div class="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl p-6 border border-yellow-100">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-xl flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white">event</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-900">Fälligkeitsdatum</h3>
+                    </div>
+                    <input
+                        type="date"
+                        id="due_date"
+                        name="due_date"
+                        value="{{ homework.due_date }}"
+                        class="w-full px-4 py-3 bg-white border border-yellow-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-400"
+                    >
+                </div>
+
+                <!-- Notes Section -->
+                <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white">description</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-900">Notizen (Markdown unterstützt)</h3>
+                    </div>
+                    <textarea
+                        id="notes"
+                        name="notes"
+                        rows="6"
+                        class="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 resize-y text-gray-900 placeholder-gray-400"
+                        placeholder="Füge Notizen oder Details zur Hausaufgabe hinzu..."
+                    >{{ homework.notes }}</textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex items-center justify-center pt-6">
+                    <button
+                        type="submit"
+                        class="flex items-center justify-center space-x-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-12 rounded-2xl hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold text-lg"
+                    >
+                        <span class="material-symbols-outlined text-2xl">save</span>
+                        <span>Änderungen speichern</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

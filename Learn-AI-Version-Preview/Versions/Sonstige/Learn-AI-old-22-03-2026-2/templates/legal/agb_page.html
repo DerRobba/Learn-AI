@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nutzungsbedingungen - Learn-AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .prose h1 { font-size: 1.875rem; font-weight: 800; margin-top: 2rem; margin-bottom: 1rem; color: #111827; }
+        .prose h2 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1f2937; }
+        .prose p { margin-bottom: 1rem; line-height: 1.6; color: #4b5563; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 min-h-screen py-8 px-4 md:py-12">
+    <div class="max-w-4xl mx-auto">
+        <!-- Back Button -->
+        <a href="/" class="inline-flex items-center space-x-2 text-white mb-6 hover:translate-x-[-4px] transition-transform duration-300">
+            <span class="material-symbols-outlined">arrow_back</span>
+            <span class="font-medium">Zurück zur App</span>
+        </a>
+
+        <!-- Content Card -->
+        <div class="bg-white rounded-3xl shadow-2xl p-6 md:p-12 overflow-hidden">
+            <div class="flex items-center space-x-4 mb-8 pb-6 border-b border-gray-100">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <span class="material-symbols-outlined text-2xl">gavel</span>
+                </div>
+                <h1 class="text-3xl font-extrabold text-gray-900">Nutzungsbedingungen</h1>
+            </div>
+            
+            <div class="prose max-w-none">
+                {% include 'legal/agb.html' %}
+            </div>
+            
+            <div class="mt-12 pt-8 border-t border-gray-100 text-center">
+                <p class="text-sm text-gray-400">© 2026 Learn-AI - Intelligenter Lernassistent</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
