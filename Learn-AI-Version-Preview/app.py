@@ -5,6 +5,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -15,8 +16,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import quote
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 BASE_DIR = Path(__file__).resolve().parent
 VERSIONS_DIR = BASE_DIR / "Versions"
@@ -152,6 +154,10 @@ def human_size(size: int) -> str:
             return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
     return f"{size} B"
+
+
+def build_proxy_base_path(version_name: str) -> str:
+    return f"/proxy/{quote(version_name, safe='')}"
 
 
 def summarize_tree(version_dir: Path) -> tuple[list[dict[str, Any]], int, int, int]:
@@ -405,7 +411,13 @@ def build_runtime_state(version_name: str) -> dict[str, Any]:
         return {"running": False, "port": None, "launch_url": None, "iframe_url": None, "last_error": LAST_START_ERRORS.get(version_name)}
     port = state["port"]
     url = f"http://127.0.0.1:{port}"
-    return {"running": True, "port": port, "launch_url": url, "iframe_url": url, "last_error": LAST_START_ERRORS.get(version_name)}
+    return {
+        "running": True,
+        "port": port,
+        "launch_url": url,
+        "iframe_url": f"{build_proxy_base_path(version_name)}/",
+        "last_error": LAST_START_ERRORS.get(version_name),
+    }
 
 
 def start_version_process(version_name: str) -> dict[str, Any]:
@@ -620,6 +632,67 @@ def build_versions_tree() -> dict[str, Any]:
     return build_folder_node(VERSIONS_DIR, get_auto_start_folders(), is_root=True)
 
 
+def rewrite_proxied_text(content: bytes, version_name: str, launch_url: str, content_type: str) -> bytes:
+    if not content:
+        return content
+
+    try:
+        text = content.decode("utf-8")
+        encoding = "utf-8"
+    except UnicodeDecodeError:
+        try:
+            text = content.decode("latin-1")
+            encoding = "latin-1"
+        except UnicodeDecodeError:
+            return content
+
+    proxy_base = build_proxy_base_path(version_name)
+    proxy_root = f"{proxy_base}/"
+    absolute_root = f"{launch_url}/"
+
+    replacements = [
+        (absolute_root, proxy_root),
+        (launch_url, proxy_base),
+        ('href="/', f'href="{proxy_root}'),
+        ("href='/", f"href='{proxy_root}"),
+        ('src="/', f'src="{proxy_root}'),
+        ("src='/", f"src='{proxy_root}"),
+        ('action="/', f'action="{proxy_root}'),
+        ("action='/", f"action='{proxy_root}"),
+        ('fetch("/', f'fetch("{proxy_root}'),
+        ("fetch('/", f"fetch('{proxy_root}"),
+        ('url("/', f'url("{proxy_root}'),
+        ("url('/", f"url('{proxy_root}"),
+        ('location.href="/', f'location.href="{proxy_root}'),
+        ("location.href='/", f"location.href='{proxy_root}"),
+        ('location = "/', f'location = "{proxy_root}'),
+        ("location = '/", f"location = '{proxy_root}"),
+        ('XMLHttpRequest().open("GET", "/', f'XMLHttpRequest().open("GET", "{proxy_root}'),
+        ("XMLHttpRequest().open('GET', '/", f"XMLHttpRequest().open('GET', '{proxy_root}"),
+    ]
+
+    for source, target in replacements:
+        text = text.replace(source, target)
+
+    if "javascript" in content_type or "json" in content_type:
+        text = text.replace('"/', f'"{proxy_root}')
+        text = text.replace("'/", f"'{proxy_root}")
+
+    return text.encode(encoding)
+
+
+def rewrite_proxy_header_value(header_value: str, version_name: str, launch_url: str) -> str:
+    proxy_base = build_proxy_base_path(version_name)
+    proxy_root = f"{proxy_base}/"
+    rewritten = header_value.replace(f"{launch_url}/", proxy_root).replace(launch_url, proxy_base)
+
+    if rewritten.startswith("/"):
+        rewritten = f"{proxy_root}{rewritten.lstrip('/')}"
+
+    rewritten = re.sub(r"(?i)\bPath=/((?=;)|$)", f"Path={proxy_root}", rewritten)
+    return rewritten
+
+
 @app.route("/")
 def index() -> str:
     clean_dead_processes()
@@ -708,6 +781,70 @@ def folder_autostart():
     if enabled:
         ensure_versions_started([version_dir for version_dir in list_all_version_dirs(folder_dir) if should_auto_start_version(version_dir, set(settings["auto_start_folders"]))])
     return jsonify(build_versions_tree())
+
+
+@app.route("/proxy/<path:version_name>/", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+@app.route("/proxy/<path:version_name>/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+def proxy_version(version_name: str, subpath: str):
+    try:
+        normalized = normalize_relative_path(version_name)
+        safe_version_dir(normalized)
+    except FileNotFoundError:
+        abort(404)
+
+    runtime = build_runtime_state(normalized)
+    if not runtime["running"]:
+        try:
+            runtime = start_version_process(normalized)
+        except RuntimeError as exc:
+            return Response(str(exc), status=502, mimetype="text/plain")
+
+    target_url = runtime["launch_url"]
+    if subpath:
+        target_url = f"{target_url}/{subpath}"
+    elif not request.path.endswith("/"):
+        target_url = f"{target_url}/"
+
+    if request.query_string:
+        target_url = f"{target_url}?{request.query_string.decode('utf-8', errors='ignore')}"
+
+    outgoing_headers = {}
+    for header_name, header_value in request.headers.items():
+        if header_name.lower() in {"host", "content-length"}:
+            continue
+        outgoing_headers[header_name] = header_value
+
+    payload = request.get_data() if request.method in {"POST", "PUT", "PATCH", "DELETE"} else None
+    proxy_request = urllib.request.Request(target_url, data=payload, headers=outgoing_headers, method=request.method)
+
+    try:
+        upstream = urllib.request.urlopen(proxy_request, timeout=60)
+    except urllib.error.HTTPError as error:
+        upstream = error
+    except urllib.error.URLError as error:
+        return Response(f"Proxy-Fehler: {error.reason}", status=502, mimetype="text/plain")
+
+    body = upstream.read()
+    content_type = upstream.headers.get("Content-Type", "")
+    lowered_type = content_type.lower()
+    if any(token in lowered_type for token in ("text/html", "text/css", "javascript", "json", "svg", "xml")):
+        body = rewrite_proxied_text(body, normalized, runtime["launch_url"], lowered_type)
+
+    response = Response(body, status=getattr(upstream, "status", 200))
+    excluded_headers = {"content-length", "transfer-encoding", "content-encoding", "connection"}
+    for header_name, header_value in upstream.headers.items():
+        if header_name.lower() in excluded_headers:
+            continue
+        if header_name.lower() == "set-cookie":
+            continue
+        if header_name.lower() == "location":
+            header_value = rewrite_proxy_header_value(header_value, normalized, runtime["launch_url"])
+        response.headers[header_name] = header_value
+
+    for cookie_header in upstream.headers.get_all("Set-Cookie", []):
+        response.headers.add("Set-Cookie", rewrite_proxy_header_value(cookie_header, normalized, runtime["launch_url"]))
+
+    return response
 
 
 @app.route("/api/versions/<path:version_name>/file/<path:file_path>")
