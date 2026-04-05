@@ -45,6 +45,14 @@ LOG_LIMIT = 500
 DEFAULT_SETTINGS: dict[str, Any] = {"auto_start_folders": []}
 
 
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+PROXY_OPENER = urllib.request.build_opener(NoRedirectHandler)
+
+
 def ensure_versions_dir() -> None:
     VERSIONS_DIR.mkdir(exist_ok=True)
 
@@ -829,7 +837,7 @@ def proxy_version(version_token: str, subpath: str):
     proxy_request = urllib.request.Request(target_url, data=payload, headers=outgoing_headers, method=request.method)
 
     try:
-        upstream = urllib.request.urlopen(proxy_request, timeout=60)
+        upstream = PROXY_OPENER.open(proxy_request, timeout=60)
     except urllib.error.HTTPError as error:
         upstream = error
     except urllib.error.URLError as error:
