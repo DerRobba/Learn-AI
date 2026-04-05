@@ -5,3 +5,4 @@ OpenAI
 flask-session
 markdown
 gunicorn
+bcrypt

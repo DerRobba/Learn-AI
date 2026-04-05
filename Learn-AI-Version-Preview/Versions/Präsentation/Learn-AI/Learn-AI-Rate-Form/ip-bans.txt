@@ -1,3 +1,0 @@
-# Learn-AI Rating App - IP Ban List
-# Eine IP pro Zeile
-127.0.0.1
