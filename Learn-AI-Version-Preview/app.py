@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import atexit
+import base64
 import hashlib
 import json
 import mimetypes
@@ -16,8 +17,6 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import quote
-
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -156,8 +155,20 @@ def human_size(size: int) -> str:
     return f"{size} B"
 
 
+def encode_version_token(version_name: str) -> str:
+    return base64.urlsafe_b64encode(version_name.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def decode_version_token(token: str) -> str:
+    padded = token + "=" * (-len(token) % 4)
+    try:
+        return normalize_relative_path(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, base64.binascii.Error) as exc:
+        raise FileNotFoundError from exc
+
+
 def build_proxy_base_path(version_name: str) -> str:
-    return f"/proxy/{quote(version_name, safe='')}"
+    return f"/proxy/{encode_version_token(version_name)}"
 
 
 def summarize_tree(version_dir: Path) -> tuple[list[dict[str, Any]], int, int, int]:
@@ -783,11 +794,11 @@ def folder_autostart():
     return jsonify(build_versions_tree())
 
 
-@app.route("/proxy/<path:version_name>/", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
-@app.route("/proxy/<path:version_name>/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
-def proxy_version(version_name: str, subpath: str):
+@app.route("/proxy/<version_token>/", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+@app.route("/proxy/<version_token>/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+def proxy_version(version_token: str, subpath: str):
     try:
-        normalized = normalize_relative_path(version_name)
+        normalized = decode_version_token(version_token)
         safe_version_dir(normalized)
     except FileNotFoundError:
         abort(404)
