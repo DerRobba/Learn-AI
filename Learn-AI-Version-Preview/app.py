@@ -696,6 +696,48 @@ def rewrite_proxied_text(content: bytes, version_name: str, launch_url: str, con
     if "javascript" in content_type or "json" in content_type:
         text = text.replace('"/', f'"{proxy_root}')
         text = text.replace("'/", f"'{proxy_root}")
+        text = text.replace("`/", f"`{proxy_root}")
+
+    if "text/html" in content_type:
+        bridge_script = f"""
+<script>
+(() => {{
+    const proxyRoot = {json.dumps(proxy_root)};
+    const absolutize = (value) => {{
+        if (typeof value !== "string") return value;
+        if (value.startsWith(proxyRoot) || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("//")) return value;
+        if (value.startsWith("/")) return proxyRoot + value.slice(1);
+        return value;
+    }};
+
+    const originalFetch = window.fetch?.bind(window);
+    if (originalFetch) {{
+        window.fetch = (input, init) => {{
+            if (typeof input === "string") return originalFetch(absolutize(input), init);
+            if (input instanceof Request) return originalFetch(new Request(absolutize(input.url), input), init);
+            return originalFetch(input, init);
+        }};
+    }}
+
+    const OriginalEventSource = window.EventSource;
+    if (OriginalEventSource) {{
+        window.EventSource = function(url, config) {{
+            return new OriginalEventSource(absolutize(url), config);
+        }};
+        window.EventSource.prototype = OriginalEventSource.prototype;
+    }}
+
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {{
+        return originalOpen.call(this, method, absolutize(url), ...rest);
+    }};
+}})();
+</script>
+"""
+        if "</head>" in text:
+            text = text.replace("</head>", bridge_script + "\n</head>", 1)
+        else:
+            text = bridge_script + text
 
     return text.encode(encoding)
 
