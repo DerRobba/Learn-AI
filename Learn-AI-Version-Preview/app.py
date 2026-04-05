@@ -535,10 +535,23 @@ def ensure_versions_started(version_dirs: list[Path]) -> None:
         ensure_version_started(to_relative_path(version_dir))
 
 
+def start_versions_in_background(version_dirs: list[Path]) -> None:
+    version_names = [to_relative_path(version_dir) for version_dir in version_dirs]
+
+    def runner() -> None:
+        for version_name in version_names:
+            try:
+                ensure_version_started(version_name)
+            except BaseException:
+                LAST_START_ERRORS[version_name] = "Die Version konnte im Hintergrund nicht gestartet werden."
+
+    threading.Thread(target=runner, daemon=True).start()
+
+
 def start_all_versions_on_boot() -> None:
     auto_start_folders = get_auto_start_folders()
     versions = [version_dir for version_dir in list_all_version_dirs() if should_auto_start_version(version_dir, auto_start_folders)]
-    ensure_versions_started(versions)
+    start_versions_in_background(versions)
 
 
 atexit.register(cleanup_all_processes)
@@ -840,7 +853,13 @@ def folder_autostart():
     except FileNotFoundError:
         abort(404)
     if enabled:
-        ensure_versions_started([version_dir for version_dir in list_all_version_dirs(folder_dir) if should_auto_start_version(version_dir, set(settings["auto_start_folders"]))])
+        start_versions_in_background(
+            [
+                version_dir
+                for version_dir in list_all_version_dirs(folder_dir)
+                if should_auto_start_version(version_dir, set(settings["auto_start_folders"]))
+            ]
+        )
     return jsonify(build_versions_tree())
 
 
