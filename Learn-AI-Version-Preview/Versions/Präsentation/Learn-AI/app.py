@@ -6,8 +6,9 @@ import uuid
 import json
 import re
 import traceback
+import threading
+import time as time_module
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
 from dotenv import load_dotenv
@@ -34,12 +35,64 @@ us.migrate_from_sqlite()
 
 generating_sessions = {}
 
+# Brute-force protection: IP -> (attempts, last_attempt_time)
+login_attempts = {}
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
 
+@app.context_processor
+def inject_csrf_token():
+    return {'csrf_token': generate_csrf_token()}
+
+def check_password_strength(password):
+    """Check if password meets requirements: min 8 chars, uppercase, lowercase, digit, special char."""
+    if len(password) < 8:
+        return False, "Passwort muss mindestens 8 Zeichen lang sein."
+    if not re.search(r'[A-Z]', password):
+        return False, "Passwort muss mindestens einen Großbuchstaben enthalten."
+    if not re.search(r'[a-z]', password):
+        return False, "Passwort muss mindestens einen Kleinbuchstaben enthalten."
+    if not re.search(r'\d', password):
+        return False, "Passwort muss mindestens eine Zahl enthalten."
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        return False, "Passwort muss mindestens ein Sonderzeichen enthalten."
+    return True, ""
+
+def get_client_ip():
+    """Get client IP address."""
+    if request.environ.get('HTTP_X_FORWARDED_FOR'):
+        return request.environ.get('HTTP_X_FORWARDED_FOR').split(', ')[0]
+    return request.environ.get('REMOTE_ADDR')
+
+def generate_csrf_token():
+    """Generate a CSRF token for the session."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = str(uuid.uuid4())
+    return session['csrf_token']
+
+def validate_csrf_token(token):
+    """Validate the CSRF token."""
+    return token and token == session.get('csrf_token')
+
+def require_csrf(f):
+    """Decorator to require CSRF token for POST requests."""
+    def wrapper(*args, **kwargs):
+        if request.method == 'POST':
+            token = request.form.get('csrf_token')
+            if not validate_csrf_token(token):
+                abort(403, 'Invalid CSRF token')
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
 def convert_to_iso_date(date_str):
-    if not date_str:
-        return date_str
+    """Get client IP address."""
+    if request.environ.get('HTTP_X_FORWARDED_FOR'):
+        return request.environ.get('HTTP_X_FORWARDED_FOR').split(', ')[0]
+    return request.environ.get('REMOTE_ADDR')
+
+def convert_to_iso_date(date_str):
     # Check if already ISO format (YYYY-MM-DD)
     if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
         return date_str
@@ -63,13 +116,15 @@ def german_date_filter(date_str):
 
 @app.route('/api/schools')
 def get_schools():
+    if 'user_id' not in session or session.get('user_type') != 'it-admin':
+        return jsonify([]), 401
     schools = us.get_unique_school_names()
     return jsonify(schools)
 
 @app.route('/api/students')
 def get_students():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
-        return jsonify([])
+        return jsonify([]), 401
     school = session.get('school')
     students = us.get_student_usernames_for_school(school)
     return jsonify(students)
@@ -77,7 +132,7 @@ def get_students():
 @app.route('/api/classes')
 def get_classes():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
-        return jsonify([])
+        return jsonify([]), 401
     school = session.get('school')
     classes = us.get_unique_class_names_for_school(school)
     return jsonify(classes)
@@ -85,7 +140,7 @@ def get_classes():
 @app.route('/api/teachers')
 def get_teachers():
     if 'user_id' not in session or session.get('user_type') != 'it-admin':
-        return jsonify([])
+        return jsonify([]), 401
     school = session.get('school')
     teachers = us.get_teacher_usernames_for_school(school)
     return jsonify(teachers)
@@ -135,6 +190,7 @@ system_prompt = os.getenv("SYSTEM_PROMPT")
 ip_ban_list = os.getenv("IP_BAN_LIST", "").split(",")
 
 
+
 @app.before_request
 def block_method():
     if request.environ.get('HTTP_X_FORWARDED_FOR'):
@@ -144,22 +200,47 @@ def block_method():
     print(ip)
     if ip in ip_ban_list:
         abort(403)
+    if request.args.get('android_app', '').lower() == 'true':
+        session['android_app'] = True
 @app.route('/login')
 def login():
     if 'user_id' in session:
         return redirect(url_for('index'))
-    return render_template('login.html')
+    return render_template('login.html', csrf_token=generate_csrf_token())
 
 @app.route('/login', methods=['POST'])
+@require_csrf
 def login_post():
-    username = request.form.get('username')
-    password = request.form.get('password')
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
 
     if not username or not password:
         return render_template('login.html', error='Alle Felder sind erforderlich.')
 
+    if len(username) > 32 or len(password) > 128:
+        return render_template('login.html', error='Ungültige Eingabe.')
+
+    if not re.match(r'^[A-Za-z0-9_.-]+$', username):
+        return render_template('login.html', error='Benutzername darf nur alphanumerische Zeichen, Punkt, Unterstrich und Bindestrich enthalten.')
+
+    # Brute-force protection
+    ip = get_client_ip()
+    now = time_module.time()
+    if ip in login_attempts:
+        attempts, last_time = login_attempts[ip]
+        if now - last_time > 3600:  # Reset after 1 hour
+            attempts = 0
+        if attempts >= 5:
+            return render_template('login.html', error='Zu viele fehlgeschlagene Anmeldungen. Versuche es später erneut.')
+        login_attempts[ip] = (attempts + 1, now)
+    else:
+        login_attempts[ip] = (1, now)
+
     user = us.get_user(username, password)
     if user:
+        # Reset attempts on success
+        if ip in login_attempts:
+            del login_attempts[ip]
         session['user_id'] = user['uuid']
         session['username'] = user['username']
         session['user_type'] = user['user_type']
@@ -173,17 +254,21 @@ def login_post():
 def register():
     if 'user_id' in session:
         return redirect(url_for('index'))
-    return render_template('register.html')
+    return render_template('register.html', csrf_token=generate_csrf_token())
 
 @app.route('/register', methods=['POST'])
+@require_csrf
 def register_post():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    password_confirm = request.form.get('password_confirm')
-    user_type = request.form.get('user_type')
-    school = request.form.get('school')
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+    password_confirm = request.form.get('password_confirm') or ''
+    user_type = (request.form.get('user_type') or '').strip()
+    school = (request.form.get('school') or '').strip()
     agb_accept = request.form.get('agb_accept')
     privacy_accept = request.form.get('privacy_accept')
+
+    if user_type not in ['student', 'teacher']:
+        return render_template('register.html', error='Ungültiger Benutzertyp.')
 
     if not username or not password or not password_confirm or not user_type or not school:
         return render_template('register.html', error='Alle Felder sind erforderlich.')
@@ -193,6 +278,22 @@ def register_post():
 
     if password != password_confirm:
         return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
+
+    if len(username) > 32 or len(password) < 8 or len(password) > 128 or len(school) > 64:
+        return render_template('register.html', error='Ungültige Eingabe-Länge.')
+
+    # Password strength check
+    is_strong, strength_error = check_password_strength(password)
+    if not is_strong:
+        return render_template('register.html', error=strength_error)
+
+    if not re.match(r'^[A-Za-z0-9_.-]+$', username):
+        return render_template('register.html', error='Benutzername darf nur alphanumerische Zeichen, Punkt, Unterstrich und Bindestrich enthalten.')
+
+    if '..' in username or '/' in username or '\\' in username:
+        return render_template('register.html', error='Ungültiger Benutzername.')
+
+    school = re.sub(r'[^A-Za-z0-9\s\-\_\.\,]', '', school)
 
     if not us.create_user(username, password, user_type, school):
         if user_type == 'it-admin':
@@ -274,6 +375,7 @@ def new_chat():
 @app.route('/ask')
 def ask():
     user_id = session.get('user_id')
+    android_app_flag = session.get('android_app', False)
     question = request.args.get('question', '')
 
     chat_session_id = session.get('chat_session_id')
@@ -735,6 +837,7 @@ def ask():
                 if homework_link_id: yield from yield_sse(f"HOMEWORK_LINK:{homework_link_id}")
                 if pdf_basename: yield from yield_sse(f"WORKSHEET_DOWNLOAD_LINK:{pdf_basename}")
 
+
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             traceback.print_exc()
@@ -1038,6 +1141,7 @@ def create_assignment_route():
         school = session['school']
 
         create_assignment(title, description, user_id, class_name, school)
+
         return redirect(url_for('index'))
 
     return render_template('create_assignment.html')

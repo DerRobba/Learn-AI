@@ -1,4 +1,0 @@
-# Learn-AI Rating App - IP Whitelist
-# IPs in dieser Liste können unbegrenzt bewerten
-# Eine IP pro Zeile
-127.0.0.1
