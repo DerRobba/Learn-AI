@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalender - Learn-AI</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background-color: #e5e7eb;
+        }
+        .calendar-day {
+            min-height: 100px;
+            background-color: white;
+        }
+        @media (max-width: 640px) {
+            .calendar-day {
+                min-height: 80px;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400">
+    <!-- Header -->
+    <header class="bg-white/95 backdrop-blur-xl shadow-lg border-b border-white/20">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span class="material-symbols-outlined text-white text-xl">neurology</span>
+                </div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent hidden sm:block">
+                    Intelligenter Lernassistent
+                </h1>
+            </div>
+            <a href="{{ url_for('index') }}" class="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl transition-colors duration-300">
+                <span class="material-symbols-outlined">arrow_back</span>
+                <span class="font-medium">Zurück</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto p-4 md:p-6">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+            <!-- Calendar Header -->
+            <div class="p-6 flex items-center justify-between border-b border-gray-200">
+                <h2 id="current-month" class="text-2xl font-bold text-gray-900 capitalize"></h2>
+                <div class="flex space-x-2">
+                    <button id="prev-month" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                    </button>
+                    <button id="next-month" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Days of Week -->
+            <div class="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Mo</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Di</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Mi</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Do</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Fr</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">Sa</div>
+                <div class="p-4 text-center text-sm font-semibold text-gray-600">So</div>
+            </div>
+
+            <!-- Calendar Grid -->
+            <div id="calendar-body" class="calendar-grid">
+                <!-- Days will be inserted here by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Data embedded for JS -->
+    <script>
+        const rawHomework = {{ homework|tojson }};
+        // Parse dates correctly (handling "YYYY-MM-DD")
+        const events = rawHomework.map(hw => ({
+            id: hw.id,
+            title: hw.title,
+            date: hw.due_date, // Format: YYYY-MM-DD
+            completed: hw.completed,
+            subject: hw.subject_name
+        }));
+
+        let currentDate = new Date();
+
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            // Set header text
+            const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+            document.getElementById('current-month').textContent = `${monthNames[month]} ${year}`;
+
+            const firstDayOfMonth = new Date(year, month, 1);
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            // Adjust for Monday start (0=Sun, 1=Mon, ..., 6=Sat) -> (0=Mon, ..., 6=Sun)
+            let startDay = firstDayOfMonth.getDay() - 1;
+            if (startDay === -1) startDay = 6;
+
+            const calendarBody = document.getElementById('calendar-body');
+            calendarBody.innerHTML = '';
+
+            // Empty cells for days before start of month
+            for (let i = 0; i < startDay; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'bg-gray-50'; // Slightly different bg for empty slots
+                calendarBody.appendChild(emptyCell);
+            }
+
+            // Days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day p-2 border-r border-b border-gray-100 relative hover:bg-gray-50 transition-colors cursor-pointer';
+                
+                const dayNumber = document.createElement('div');
+                dayNumber.className = 'text-sm font-medium text-gray-500 mb-1';
+                dayNumber.textContent = day;
+                
+                // Highlight today
+                const today = new Date();
+                if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    dayNumber.className = 'w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-sm font-bold mb-1';
+                }
+                
+                cell.appendChild(dayNumber);
+
+                // Add events for this day
+                const daysEvents = events.filter(e => e.date === dateStr);
+                
+                const eventsContainer = document.createElement('div');
+                eventsContainer.className = 'flex flex-col gap-1 overflow-hidden';
+                
+                daysEvents.forEach(event => {
+                    const eventEl = document.createElement('a');
+                    eventEl.href = `/view-homework/${event.id}`;
+                    eventEl.className = `text-xs px-2 py-1 rounded truncate block ${event.completed ? 'bg-green-100 text-green-700 line-through' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`;
+                    eventEl.title = event.title + (event.subject ? ` (${event.subject})` : '');
+                    
+                    let content = '';
+                    if (event.subject) {
+                        content += `<span class="font-bold mr-1">${event.subject.substring(0, 3)}</span>`;
+                    }
+                    content += event.title;
+                    
+                    eventEl.innerHTML = content;
+                    eventsContainer.appendChild(eventEl);
+                });
+                
+                cell.appendChild(eventsContainer);
+                calendarBody.appendChild(cell);
+            }
+        }
+
+        document.getElementById('prev-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        document.getElementById('next-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+
+        document.addEventListener('DOMContentLoaded', renderCalendar);
+    </script>
+</body>
+</html>

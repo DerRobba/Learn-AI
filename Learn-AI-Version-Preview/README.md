@@ -11,11 +11,11 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Danach im Browser `http://127.0.0.1:5000` oeffnen.
+Danach im Browser `http://127.0.0.1:5000` öffnen.
 
 ## Nutzung
 
 - Ganze Projektordner nach `Versions` kopieren
 - Seite neu laden
-- Links eine Version auswaehlen
+- Links eine Version auswählen
 - Rechts README, Struktur, wichtige Dateien und Bilder ansehen

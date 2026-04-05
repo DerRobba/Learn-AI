@@ -1,0 +1,971 @@
+import sqlite3
+import os
+import json
+
+DATABASE_PATH = 'users.db'
+
+def init_database():
+    """Initialize the database with users and chat_history tables"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    # Create users table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            user_type TEXT NOT NULL CHECK (user_type IN ('teacher', 'student', 'it-admin')),
+            class_name TEXT,
+            school TEXT,
+            math_solver BOOLEAN DEFAULT 0,
+            is_first_login BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Add columns to users table if they don't exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN math_solver BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_first_login BOOLEAN DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
+
+    # Create assignments table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            created_by INTEGER NOT NULL,
+            class_name TEXT NOT NULL,
+            school TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users (id)
+        )
+    ''')
+
+    # Add school column to assignments table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE assignments ADD COLUMN school TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            raise
+
+    # Create submissions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assignment_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (assignment_id) REFERENCES assignments (id),
+            FOREIGN KEY (student_id) REFERENCES users (id)
+        )
+    ''')
+
+    # Create homework table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS homework (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            due_date TEXT,
+            notes TEXT,
+            subject_id INTEGER,
+            completed BOOLEAN DEFAULT 0,
+            completed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (subject_id) REFERENCES subjects (id)
+        )
+    ''')
+
+    # Add columns to homework table if they don't exist
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN subject_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN completed BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE homework ADD COLUMN completed_at TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass
+
+    # Create subjects table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(user_id, name)
+        )
+    ''')
+
+    # Create chat_history table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            session_name TEXT,
+            message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'system')),
+            content TEXT NOT NULL,
+            image_data TEXT,
+            worksheet_filename TEXT,
+            chat_subject TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
+    # Add worksheet_filename column to chat_history table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN worksheet_filename TEXT")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            pass # Column already exists
+    
+    # Add chat_subject column to chat_history table if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN chat_subject TEXT")
+    except sqlite3.OperationalError as e:
+        if 'duplicate column name' not in str(e):
+            pass # Column already exists
+
+    # Create indices for better performance
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_chat_history_user_session ON chat_history(user_id, session_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_assignments_class_school ON assignments(class_name, school)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id)')
+
+    # Create memories table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+def add_memory(user_id, content):
+    """Add a new memory for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        # Check if similar memory exists to avoid duplicates (simple check)
+        cursor.execute('SELECT id FROM memories WHERE user_id = ? AND content = ?', (user_id, content))
+        if cursor.fetchone():
+            return False
+            
+        cursor.execute('INSERT INTO memories (user_id, content) VALUES (?, ?)', (user_id, content))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_memories(user_id):
+    """Get all memories for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, content, created_at FROM memories WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
+    memories = cursor.fetchall()
+    conn.close()
+    return [{'id': m[0], 'content': m[1], 'created_at': m[2]} for m in memories]
+
+def delete_memory(memory_id, user_id):
+    """Delete a specific memory"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM memories WHERE id = ? AND user_id = ?', (memory_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_memory_by_content(user_id, content):
+    """Delete a memory by its content (for AI management)"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM memories WHERE user_id = ? AND content = ?', (user_id, content))
+        if cursor.rowcount > 0:
+            conn.commit()
+            return True
+        return False
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def create_user(username, password, user_type, school=None):
+    """Create a new user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        if user_type == 'it-admin':
+            cursor.execute('SELECT id FROM users WHERE user_type = ? AND school = ?', ('it-admin', school))
+            if cursor.fetchone():
+                return False  # IT admin for this school already exists
+
+        cursor.execute('INSERT INTO users (username, password, user_type, school) VALUES (?, ?, ?, ?)',
+                      (username, password, user_type, school))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False  # Username already exists
+    finally:
+        conn.close()
+
+def get_user(username, password):
+    """Get user by username and password"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, username, user_type, class_name, school FROM users WHERE username = ? AND password = ?',
+                  (username, password))
+    user = cursor.fetchone()
+    conn.close()
+
+    if user:
+        return {'id': user[0], 'username': user[1], 'user_type': user[2], 'class_name': user[3], 'school': user[4]}
+    return None
+
+def get_user_by_username(username):
+    """Get user by username"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, username, user_type, class_name, school FROM users WHERE username = ?',
+                  (username,))
+    user = cursor.fetchone()
+    conn.close()
+
+    if user:
+        return {'id': user[0], 'username': user[1], 'user_type': user[2], 'class_name': user[3], 'school': user[4]}
+    return None
+
+def assign_teacher_to_class(teacher_username, class_name):
+    """Assign a teacher to a class"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('UPDATE users SET class_name = ? WHERE username = ? AND user_type = \'teacher\'', (class_name, teacher_username))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def add_student_to_class(student_username, class_name):
+    """Add a student to a class"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('UPDATE users SET class_name = ? WHERE username = ? AND user_type = \'student\'', (class_name, student_username))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_teachers_for_school(school):
+    """Get all teachers for a school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, username, class_name FROM users WHERE user_type = \'teacher\' AND school = ?', (school,))
+    teachers = cursor.fetchall()
+    conn.close()
+
+    return [{'id': t[0], 'username': t[1], 'class_name': t[2]} for t in teachers]
+
+def get_students_for_school(school):
+    """Get all students for a school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, username, class_name FROM users WHERE user_type = \'student\' AND school = ?', (school,))
+    students = cursor.fetchall()
+    conn.close()
+
+    return [{'id': s[0], 'username': s[1], 'class_name': s[2]} for s in students]
+
+def get_all_users():
+    """Get all users (for admin purposes)"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, username, password, user_type, created_at FROM users')
+    users = cursor.fetchall()
+    conn.close()
+
+    return [{'id': u[0], 'username': u[1], 'password': u[2], 'user_type': u[3], 'created_at': u[4]} for u in users]
+
+def save_chat_message(user_id, session_id, message_type, content, image_data=None, worksheet_filename=None, chat_subject=None, session_name=None):
+    """Save a chat message to the database"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    # If session_name is not provided, try to get the existing one for this session
+    if session_name is None:
+        cursor.execute('SELECT session_name FROM chat_history WHERE session_id = ? AND session_name IS NOT NULL LIMIT 1', (session_id,))
+        row = cursor.fetchone()
+        session_name = row[0] if row else None
+
+    cursor.execute('''
+        INSERT INTO chat_history (user_id, session_id, session_name, message_type, content, image_data, worksheet_filename, chat_subject)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, session_id, session_name, message_type, content, image_data, worksheet_filename, chat_subject))
+    
+    last_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return last_id
+
+def update_chat_message_worksheet(message_id, worksheet_filename):
+    """Update a chat message with a worksheet filename"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE chat_history SET worksheet_filename = ? WHERE id = ?', (worksheet_filename, message_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_chat_history(user_id, session_id):
+    """Get chat history for a specific user and session"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT message_type, content, image_data, worksheet_filename, created_at
+        FROM chat_history
+        WHERE user_id = ? AND session_id = ?
+        ORDER BY created_at ASC
+    ''', (user_id, session_id))
+
+    messages = cursor.fetchall()
+    conn.close()
+
+    return [{'message_type': m[0], 'content': m[1], 'image_data': m[2], 'worksheet_filename': m[3], 'created_at': m[4]} for m in messages]
+
+def get_user_chat_sessions(user_id):
+    """Get all chat sessions for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT 
+            session_id, 
+            MIN(created_at) as first_message, 
+            MAX(created_at) as last_message,
+            COALESCE(session_name, 'Neuer Chat') as session_name,
+            MAX(chat_subject) as chat_subject
+        FROM chat_history
+        WHERE user_id = ?
+        GROUP BY session_id
+        ORDER BY last_message DESC
+    ''', (user_id,))
+
+    sessions = cursor.fetchall()
+    conn.close()
+
+    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3], 'chat_subject': s[4]} for s in sessions]
+
+def get_chat_sessions_by_subject(user_id, subject):
+    """Get chat sessions for a user filtered by subject"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT 
+            session_id, 
+            MIN(created_at) as first_message, 
+            MAX(created_at) as last_message,
+            COALESCE(session_name, 'Neuer Chat') as session_name,
+            MAX(chat_subject) as chat_subject
+        FROM chat_history
+        WHERE user_id = ? AND chat_subject = ?
+        GROUP BY session_id
+        ORDER BY last_message DESC
+    ''', (user_id, subject))
+
+    sessions = cursor.fetchall()
+    conn.close()
+
+    return [{'session_id': s[0], 'first_message': s[1], 'last_message': s[2], 'session_name': s[3], 'chat_subject': s[4]} for s in sessions]
+
+def get_unique_chat_subjects(user_id):
+    """Get all unique chat subjects for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT DISTINCT chat_subject
+        FROM chat_history
+        WHERE user_id = ? AND chat_subject IS NOT NULL AND chat_subject != ''
+        ORDER BY chat_subject ASC
+    ''', (user_id,))
+
+    subjects = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in subjects]
+
+def delete_chat_session(user_id, session_id):
+    """Delete a chat session for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM chat_history WHERE user_id = ? AND session_id = ?', (user_id, session_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def rename_chat_session(user_id, session_id, new_name):
+    """Rename a chat session for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('UPDATE chat_history SET session_name = ? WHERE user_id = ? AND session_id = ?', (new_name, user_id, session_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_session_name(user_id, session_id):
+    """Get the name of a specific session"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT session_name FROM chat_history WHERE user_id = ? AND session_id = ? LIMIT 1', (user_id, session_id))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def update_chat_session_subject(user_id, session_id, subject):
+    """Update the subject for all chat messages in a given session"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('UPDATE chat_history SET chat_subject = ? WHERE user_id = ? AND session_id = ?', (subject, user_id, session_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def create_assignment(title, description, created_by, class_name, school):
+    """Create a new assignment"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO assignments (title, description, created_by, class_name, school) VALUES (?, ?, ?, ?, ?)',
+                      (title, description, created_by, class_name, school))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_assignments_for_class(class_name, school):
+    """Get all assignments for a given class and school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, title, description, created_at FROM assignments WHERE class_name = ? AND school = ? ORDER BY created_at DESC',
+                  (class_name, school))
+    assignments = cursor.fetchall()
+    conn.close()
+
+    return [{'id': a[0], 'title': a[1], 'description': a[2], 'created_at': a[3]} for a in assignments]
+
+def get_assignment(assignment_id):
+    """Get a single assignment by its ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, title, description, created_at FROM assignments WHERE id = ?',
+                  (assignment_id,))
+    assignment = cursor.fetchone()
+    conn.close()
+
+    if assignment:
+        return {'id': assignment[0], 'title': assignment[1], 'description': assignment[2], 'created_at': assignment[3]}
+    return None
+
+def delete_assignment(assignment_id):
+    """Delete an assignment and all its submissions"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # First, delete all submissions for this assignment
+        cursor.execute('DELETE FROM submissions WHERE assignment_id = ?', (assignment_id,))
+
+        # Then, delete the assignment itself
+        cursor.execute('DELETE FROM assignments WHERE id = ?', (assignment_id,))
+
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def create_submission(assignment_id, student_id, content):
+    """Create a new submission"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO submissions (assignment_id, student_id, content) VALUES (?, ?, ?)',
+                      (assignment_id, student_id, content))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_submissions_for_assignment(assignment_id):
+    """Get all submissions for a given assignment"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT s.id, s.content, s.submitted_at, u.username
+        FROM submissions s
+        JOIN users u ON s.student_id = u.id
+        WHERE s.assignment_id = ?
+        ORDER BY s.submitted_at DESC
+    ''', (assignment_id,))
+    submissions = cursor.fetchall()
+    conn.close()
+
+    return [{'id': s[0], 'content': s[1], 'submitted_at': s[2], 'student_username': s[3]} for s in submissions]
+
+def get_submission_for_user(assignment_id, student_id):
+    """Get a submission for a specific user and assignment"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, content, submitted_at FROM submissions WHERE assignment_id = ? AND student_id = ?',
+                  (assignment_id, student_id))
+    submission = cursor.fetchone()
+    conn.close()
+
+    if submission:
+        return {'id': submission[0], 'content': submission[1], 'submitted_at': submission[2]}
+    return None
+
+def get_unique_school_names():
+    """Get a list of unique school names"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT DISTINCT school FROM users WHERE school IS NOT NULL')
+    schools = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in schools]
+
+def get_student_usernames_for_school(school):
+    """Get a list of student usernames for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT username FROM users WHERE school = ? AND user_type = \'student\'', (school,))
+    students = cursor.fetchall()
+    conn.close()
+
+    return [s[0] for s in students]
+
+def get_unique_class_names_for_school(school):
+    """Get a list of unique class names for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT DISTINCT class_name FROM users WHERE school = ? AND class_name IS NOT NULL', (school,))
+    classes = cursor.fetchall()
+    conn.close()
+
+    return [c[0] for c in classes]
+
+def get_teacher_usernames_for_school(school):
+    """Get a list of teacher usernames for a given school"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT username FROM users WHERE school = ? AND user_type = \'teacher\'', (school,))
+    teachers = cursor.fetchall()
+    conn.close()
+
+    return [t[0] for t in teachers]
+
+def create_homework(user_id, title, due_date, notes, subject_id=None):
+    """Create a new homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO homework (user_id, title, due_date, notes, subject_id) VALUES (?, ?, ?, ?, ?)',
+                      (user_id, title, due_date, notes, subject_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_homework_for_user(user_id):
+    """Get all homework for a given user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT h.id, h.title, h.due_date, h.notes, h.created_at, h.completed, s.name, h.subject_id
+        FROM homework h
+        LEFT JOIN subjects s ON h.subject_id = s.id
+        WHERE h.user_id = ?
+        ORDER BY h.completed ASC, h.due_date ASC
+    ''', (user_id,))
+    homework = cursor.fetchall()
+    conn.close()
+
+    return [{'id': h[0], 'title': h[1], 'due_date': h[2], 'notes': h[3], 'created_at': h[4], 'completed': bool(h[5]), 'subject_name': h[6], 'subject_id': h[7]} for h in homework]
+
+def get_single_homework(homework_id):
+    """Get a single homework entry by its ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT h.id, h.title, h.due_date, h.notes, h.created_at, h.completed, s.name, h.subject_id, h.user_id
+        FROM homework h
+        LEFT JOIN subjects s ON h.subject_id = s.id
+        WHERE h.id = ?
+    ''', (homework_id,))
+    homework = cursor.fetchone()
+    conn.close()
+
+    if homework:
+        return {
+            'id': homework[0], 
+            'title': homework[1], 
+            'due_date': homework[2], 
+            'notes': homework[3], 
+            'created_at': homework[4], 
+            'completed': bool(homework[5]), 
+            'subject_name': homework[6], 
+            'subject_id': homework[7],
+            'user_id': homework[8]
+        }
+    return None
+
+def update_homework(homework_id, user_id, title, due_date, notes, subject_id=None):
+    """Update an existing homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            UPDATE homework 
+            SET title = ?, due_date = ?, notes = ?, subject_id = ? 
+            WHERE id = ? AND user_id = ?
+        ''', (title, due_date, notes, subject_id, homework_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_homework(homework_id):
+    """Delete a homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM homework WHERE id = ?', (homework_id,))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_all_homework(user_id):
+    """Delete all homework for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('DELETE FROM homework WHERE user_id = ?', (user_id,))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def toggle_homework_status(homework_id, user_id):
+    """Toggle the completion status of a homework entry"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Check current status
+        cursor.execute('SELECT completed FROM homework WHERE id = ? AND user_id = ?', (homework_id, user_id))
+        result = cursor.fetchone()
+        
+        if result:
+            current_status = bool(result[0])
+            new_status = not current_status
+            
+            if new_status:
+                # Marking as completed: set completed_at to current time
+                cursor.execute('UPDATE homework SET completed = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', (new_status, homework_id, user_id))
+            else:
+                # Marking as not completed: clear completed_at
+                cursor.execute('UPDATE homework SET completed = ?, completed_at = NULL WHERE id = ? AND user_id = ?', (new_status, homework_id, user_id))
+            
+            conn.commit()
+            return True
+        return False
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_old_completed_homework(user_id):
+    """Delete homework that has been completed for more than 24 hours"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # Delete homework where completed is true and completed_at is older than 24 hours
+        cursor.execute('''
+            DELETE FROM homework 
+            WHERE user_id = ? 
+            AND completed = 1 
+            AND completed_at < datetime('now', '-1 day')
+        ''', (user_id,))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        conn.close()
+
+def get_subject_id_by_name(user_id, name):
+    """Get subject ID by name for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM subjects WHERE user_id = ? AND name = ?', (user_id, name))
+    subject = cursor.fetchone()
+    conn.close()
+    return subject[0] if subject else None
+
+def create_subject(user_id, name):
+    """Create a new subject for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('INSERT INTO subjects (user_id, name) VALUES (?, ?)', (user_id, name))
+        subject_id = cursor.lastrowid
+        conn.commit()
+        return subject_id
+    except sqlite3.IntegrityError:
+        return False  # Subject already exists
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_subjects(user_id):
+    """Get all subjects for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, name FROM subjects WHERE user_id = ? ORDER BY name ASC', (user_id,))
+    subjects = cursor.fetchall()
+    conn.close()
+
+    return [{'id': s[0], 'name': s[1]} for s in subjects]
+
+def delete_subject(subject_id, user_id):
+    """Delete a subject"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    try:
+        # First set subject_id to NULL for any homework with this subject
+        cursor.execute('UPDATE homework SET subject_id = NULL WHERE subject_id = ? AND user_id = ?', (subject_id, user_id))
+        
+        # Then delete the subject
+        cursor.execute('DELETE FROM subjects WHERE id = ? AND user_id = ?', (subject_id, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def set_math_solver_status(user_id, status):
+    """Set the math solver status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE users SET math_solver = ? WHERE id = ?', (status, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_math_solver_status(user_id):
+    """Get the math solver status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT math_solver FROM users WHERE id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return bool(result[0]) if result else False
+
+def get_first_login_status(user_id):
+    """Get the first login status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT is_first_login FROM users WHERE id = ?', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return bool(result[0]) if result else False
+
+def set_first_login_status(user_id, status):
+    """Set the first login status for a user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute('UPDATE users SET is_first_login = ? WHERE id = ?', (status, user_id))
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_all_previous_chats_summaries(user_id, exclude_session_id=None):
+    """Get summaries of all previous chats for a user to provide context to the AI"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+
+    # Get all chat sessions with their messages
+    if exclude_session_id:
+        cursor.execute('''
+            SELECT 
+                session_id, 
+                session_name,
+                chat_subject,
+                GROUP_CONCAT(CASE WHEN message_type IN ('user', 'assistant') 
+                    THEN '[' || message_type || ']: ' || substr(content, 1, 100)
+                    ELSE NULL END, ' | ')
+            FROM chat_history
+            WHERE user_id = ? AND session_id != ?
+            GROUP BY session_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 20
+        ''', (user_id, exclude_session_id))
+    else:
+        cursor.execute('''
+            SELECT 
+                session_id, 
+                session_name,
+                chat_subject,
+                GROUP_CONCAT(CASE WHEN message_type IN ('user', 'assistant') 
+                    THEN '[' || message_type || ']: ' || substr(content, 1, 100)
+                    ELSE NULL END, ' | ')
+            FROM chat_history
+            WHERE user_id = ?
+            GROUP BY session_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 20
+        ''', (user_id,))
+
+    sessions = cursor.fetchall()
+    conn.close()
+
+    summaries = []
+    for session in sessions:
+        session_id, session_name, chat_subject, messages_preview = session
+        summary = f"- {session_name or 'Neuer Chat'}"
+        if chat_subject:
+            summary += f" (Thema: {chat_subject})"
+        if messages_preview:
+            summary += f": {messages_preview}"
+        summaries.append(summary)
+    
+    return summaries

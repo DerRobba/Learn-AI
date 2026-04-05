@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -18,7 +18,7 @@
                 </button>
                 <div>
                     <h1>Learn-AI</h1>
-                    <p>Versionen direkt starten, vergleichen und benutzen</p>
+                    <p>Ordner verwalten, Versionen starten und Vorschauen vergleichen</p>
                 </div>
             </div>
         </header>
@@ -27,62 +27,64 @@
             <aside class="sidebar">
                 <div class="sidebar-top">
                     <div>
-                        <h2>Versionen</h2>
-                        <p>Alle lauffähigen Versionen werden direkt gestartet.</p>
+                        <h2>Ordner</h2>
+                        <p>Wähle einen Ordner aus. Pro Ordner kannst du den Autostart getrennt festlegen.</p>
                     </div>
-                    <span class="version-count">{{ versions|length }}</span>
+                    <span class="version-count" id="folder-count">0</span>
                 </div>
 
-                <div class="version-stack" id="version-list">
-                    {% if versions %}
-                        {% for version in versions %}
-                            <button type="button" class="version-tile" data-version-name="{{ version.name }}">
-                                <div class="tile-shot">
-                                    {% if version.running and version.iframe_url %}
-                                        <div class="shot-scale">
-                                            <iframe src="{{ version.iframe_url }}" loading="lazy" title="{{ version.name }}"></iframe>
-                                        </div>
-                                    {% else %}
-                                        <div class="shot-fallback">
-                                            <span class="material-symbols-outlined">web_asset</span>
-                                            <strong>{{ version.name }}</strong>
-                                            <small>{{ version.last_error or 'Startet gerade oder konnte noch nicht geöffnet werden.' }}</small>
-                                        </div>
-                                    {% endif %}
-                                    <span class="live-dot {{ 'is-live' if version.running else 'is-offline' }}"></span>
-                                </div>
-                                <div class="tile-copy">
-                                    <div class="tile-title-row">
-                                        <h3>{{ version.name }}</h3>
-                                        <span class="tile-state">{{ 'Live' if version.running else 'Fehler' if version.last_error else 'Startet' }}</span>
-                                    </div>
-                                    <p>{{ version.description }}</p>
-                                </div>
-                            </button>
-                        {% endfor %}
-                    {% else %}
-                        <div class="empty-box">
-                            <h3>Noch keine Versionen</h3>
-                            <p>Lege Ordner in <code>{{ versions_dir }}</code> ab.</p>
-                        </div>
-                    {% endif %}
-                </div>
+                <div class="folder-tree" id="folder-tree"></div>
             </aside>
 
             <main class="stage">
+                <section class="folder-head" id="folder-head">
+                    <div>
+                        <p class="eyebrow">Ausgewählter Ordner</p>
+                        <h2 id="folder-title">Versions</h2>
+                        <p id="folder-subtitle">Versionen und Unterordner werden geladen.</p>
+                    </div>
+                </section>
+
+                <section class="folder-panels">
+                    <article class="folder-panel">
+                        <div class="panel-head">
+                            <h3>Unterordner</h3>
+                            <span class="tile-state" id="subfolder-count">0</span>
+                        </div>
+                        <div class="subfolder-list" id="subfolder-list"></div>
+                    </article>
+
+                    <article class="folder-panel">
+                        <div class="panel-head">
+                            <h3>Versionen</h3>
+                            <span class="tile-state" id="version-count">0</span>
+                        </div>
+                        <div class="version-stack" id="version-list"></div>
+                    </article>
+                </section>
+
                 <div class="empty-box big-empty empty-chooser" id="empty-state">
                     <div class="empty-chooser-icon">
                         <span class="material-symbols-outlined">touch_app</span>
                     </div>
                     <h2>Version auswählen</h2>
-                    <p>Klicke links auf eine Vorschau, um die Web-App groß zu öffnen und direkt zu benutzen.</p>
+                    <p>Klicke rechts auf eine Version, um sie groß zu öffnen und ihre Logs zu sehen.</p>
                 </div>
 
                 <section class="stage-head hidden" id="detail-head">
                     <div>
                         <h2 id="detail-title"></h2>
+                        <p class="detail-path" id="detail-path"></p>
                     </div>
                     <div class="stage-actions">
+                        <button type="button" class="ghost-button hidden" id="interaction-toggle">
+                            <span class="material-symbols-outlined">touch_app</span>
+                            Interaktion aktivieren
+                        </button>
+                        <button type="button" class="ghost-button" id="start-button" data-version-name="">
+                            <span class="material-symbols-outlined">play_arrow</span>
+                            Starten
+                        </button>
                         <button type="button" class="gradient-button" id="restart-button" data-version-name="">
                             <span class="material-symbols-outlined">replay</span>
                             Neu starten
@@ -91,6 +93,24 @@
                 </section>
 
                 <div class="top-metrics hidden" id="detail-stats"></div>
+
+                <section class="preview-toolbar hidden" id="preview-toolbar">
+                    <label class="toolbar-field">
+                        <span>Breite</span>
+                        <select id="preview-width">
+                            <option value="100">100%</option>
+                            <option value="90">90%</option>
+                            <option value="80">80%</option>
+                            <option value="70">70%</option>
+                            <option value="60">60%</option>
+                        </select>
+                    </label>
+                    <label class="toolbar-field toolbar-field-grow">
+                        <span>Höhe</span>
+                        <input id="preview-height" type="range" min="480" max="1600" step="20" value="704">
+                    </label>
+                    <output class="toolbar-value" id="preview-height-value">704 px</output>
+                </section>
 
                 <section class="preview-shell hidden" id="preview-shell">
                     <div class="preview-frame-wrap" id="live-preview-frame"></div>
@@ -106,6 +126,7 @@
     </div>
 
     <script>
+        window.__INITIAL_TREE__ = {{ folder_tree|tojson }};
         window.__INITIAL_VERSION__ = null;
     </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

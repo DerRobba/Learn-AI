@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrierung - Learn-AI</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        .form-field { animation: slideIn 0.5s ease-out forwards; opacity: 0; }
+        .form-field:nth-child(1) { animation-delay: 0.1s; }
+        .form-field:nth-child(2) { animation-delay: 0.2s; }
+        .form-field:nth-child(3) { animation-delay: 0.3s; }
+        .form-field:nth-child(4) { animation-delay: 0.4s; }
+        .form-field:nth-child(5) { animation-delay: 0.5s; }
+        .form-field:nth-child(6) { animation-delay: 0.6s; }
+        .register-card-animation { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } }
+        .animate-blob { animation: blob 7s infinite; }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20 register-card-animation">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl mb-4 shadow-lg">
+                    <span class="material-symbols-outlined text-white text-2xl">adb</span>
+                </div>
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Intelligenter Lernassistent</h1>
+                <p class="text-gray-600 mt-2">Erstelle dein neues Konto</p>
+            </div>
+
+            {% if error %}<div class="mb-6 flex items-center space-x-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700"><span class="material-symbols-outlined text-red-500">warning</span><span class="text-sm font-medium">{{ error }}</span></div>{% endif %}
+
+            <form method="POST" class="space-y-6">
+                <div class="space-y-2 form-field">
+                    <label for="username" class="flex items-center space-x-2 text-sm font-semibold text-gray-700"><span class="material-symbols-outlined text-purple-600">person</span><span>Benutzername</span></label>
+                    <input type="text" id="username" name="username" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Benutzername">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-2 form-field">
+                        <label for="password" class="flex items-center space-x-2 text-sm font-semibold text-gray-700"><span class="material-symbols-outlined text-purple-600">lock</span><span>Passwort</span></label>
+                        <input type="password" id="password" name="password" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Passwort">
+                    </div>
+                    <div class="space-y-2 form-field">
+                        <label for="password_confirm" class="flex items-center space-x-2 text-sm font-semibold text-gray-700"><span class="material-symbols-outlined text-purple-600">lock</span><span>Bestätigen</span></label>
+                        <input type="password" id="password_confirm" name="password_confirm" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Bestätigen">
+                    </div>
+                </div>
+                <div id="pw-error" class="hidden flex items-center space-x-2 text-red-500 text-xs font-medium px-1"><span class="material-symbols-outlined text-sm">error</span><span>Passwörter stimmen nicht überein.</span></div>
+
+                <div class="space-y-3 form-field">
+                    <label class="text-sm font-semibold text-gray-700">Ich bin:</label>
+                    <div class="grid grid-cols-3 gap-3">
+                        <label class="cursor-pointer group"><input type="radio" name="user_type" value="it-admin" required class="sr-only peer"><div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-yellow-50 peer-checked:border-yellow-400 hover:bg-gray-100"><span class="material-symbols-outlined text-yellow-600 text-xl block">admin_panel_settings</span><span class="text-[10px] sm:text-xs font-medium text-gray-700">Admin</span></div></label>
+                        <label class="cursor-pointer group"><input type="radio" name="user_type" value="teacher" required class="sr-only peer"><div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-green-50 peer-checked:border-green-400 hover:bg-gray-100"><span class="material-symbols-outlined text-green-600 text-xl block">person_2</span><span class="text-[10px] sm:text-xs font-medium text-gray-700">Lehrer</span></div></label>
+                        <label class="cursor-pointer group"><input type="radio" name="user_type" value="student" required class="sr-only peer"><div class="p-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center transition-all peer-checked:bg-blue-50 peer-checked:border-blue-400 hover:bg-gray-100"><span class="material-symbols-outlined text-blue-600 text-xl block">school</span><span class="text-[10px] sm:text-xs font-medium text-gray-700">Schüler</span></div></label>
+                    </div>
+                </div>
+
+                <div class="space-y-4 form-field">
+                    <label class="flex items-start space-x-3 cursor-pointer group"><input type="checkbox" id="agb_accept" name="agb_accept" required class="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 transition-colors"><div class="text-sm text-gray-600">Ich akzeptiere die <button type="button" id="open-agb-modal" class="text-purple-600 font-semibold hover:underline">Nutzungsbedingungen</button></div></label>
+                    <label class="flex items-start space-x-3 cursor-pointer group"><input type="checkbox" id="privacy_accept" name="privacy_accept" required class="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500 transition-colors"><div class="text-sm text-gray-600">Ich akzeptiere die <button type="button" id="open-privacy-modal" class="text-purple-600 font-semibold hover:underline">Datenschutzerklärung</button></div></label>
+                </div>
+
+                <div id="school-group" class="relative space-y-2 form-field z-20">
+                    <label for="school" class="flex items-center space-x-2 text-sm font-semibold text-gray-700"><span class="material-symbols-outlined text-purple-600">apartment</span><span>Schule</span></label>
+                    <input type="text" id="school" name="school" required autocomplete="off" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-gray-900 placeholder-gray-400" placeholder="Name deiner Schule">
+                </div>
+
+                <button type="submit" class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-500 text-white py-4 rounded-xl hover:from-purple-700 hover:to-pink-600 transition-all transform hover:scale-[1.02] shadow-lg font-bold"><span class="material-symbols-outlined">person_add</span><span>Konto erstellen</span></button>
+            </form>
+
+            <div class="text-center mt-8 pt-6 border-t border-gray-200 text-sm text-gray-600">Bereits ein Konto? <a href="{{ url_for('login') }}" class="text-purple-600 font-bold hover:underline">Anmelden</a></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="agb-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col transform transition-all scale-95 opacity-0 modal-content">
+            <div class="p-6 border-b border-gray-100 flex items-center justify-between"><h3 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Nutzungsbedingungen</h3><button id="close-agb-modal" class="p-2 hover:bg-gray-100 rounded-full transition-colors"><span class="material-symbols-outlined">close</span></button></div>
+            <div class="p-8 overflow-y-auto custom-scrollbar">{% include 'legal/agb.html' %}</div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 rounded-b-3xl"><button id="confirm-agb" class="w-full bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all">Verstanden & Akzeptieren</button></div>
+        </div>
+    </div>
+
+    <div id="privacy-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col transform transition-all scale-95 opacity-0 modal-content">
+            <div class="p-6 border-b border-gray-100 flex items-center justify-between"><h3 class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">Datenschutzerklärung</h3><button id="close-privacy-modal" class="p-2 hover:bg-gray-100 rounded-full transition-colors"><span class="material-symbols-outlined">close</span></button></div>
+            <div class="p-8 overflow-y-auto custom-scrollbar">{% include 'legal/privacy_policy.html' %}</div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 rounded-b-3xl"><button id="confirm-privacy" class="w-full bg-gradient-to-r from-purple-600 to-pink-500 text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all">Verstanden & Akzeptieren</button></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            function setupModal(modalId, openBtnId, closeBtnId, confirmBtnId, checkboxId = null) {
+                const modal = document.getElementById(modalId);
+                const content = modal.querySelector('.modal-content');
+                const openBtn = document.getElementById(openBtnId);
+                const closeBtn = document.getElementById(closeBtnId);
+                const confirmBtn = document.getElementById(confirmBtnId);
+                const checkbox = checkboxId ? document.getElementById(checkboxId) : null;
+                const show = () => { modal.classList.remove('hidden'); setTimeout(() => content.classList.add('scale-100', 'opacity-100'), 10); };
+                const hide = () => { content.classList.remove('scale-100', 'opacity-100'); setTimeout(() => modal.classList.add('hidden'), 300); };
+                if (openBtn) openBtn.onclick = show;
+                if (closeBtn) closeBtn.onclick = hide;
+                if (confirmBtn) { confirmBtn.onclick = () => { if (checkbox) checkbox.checked = true; hide(); }; }
+                modal.onclick = (e) => { if (e.target === modal) hide(); };
+            }
+            setupModal('agb-modal', 'open-agb-modal', 'close-agb-modal', 'confirm-agb', 'agb_accept');
+            setupModal('privacy-modal', 'open-privacy-modal', 'close-privacy-modal', 'confirm-privacy', 'privacy_accept');
+
+            const password = document.getElementById('password'), confirm = document.getElementById('password_confirm'), errorMsg = document.getElementById('pw-error'), form = document.querySelector('form');
+            function validatePasswords() {
+                if (confirm.value && password.value !== confirm.value) { errorMsg.classList.remove('hidden'); confirm.classList.add('border-red-300', 'bg-red-50'); return false; }
+                else { errorMsg.classList.add('hidden'); confirm.classList.remove('border-red-300', 'bg-red-50'); return true; }
+            }
+            password.oninput = validatePasswords; confirm.oninput = validatePasswords;
+            form.onsubmit = (e) => { if (!validatePasswords()) { e.preventDefault(); confirm.focus(); } };
+
+            const schoolInput = document.getElementById('school'), suggestions = document.createElement('div');
+            suggestions.className = 'absolute z-50 w-full bg-white border border-gray-200 rounded-xl mt-1 shadow-xl max-h-48 overflow-y-auto hidden';
+            schoolInput.parentElement.appendChild(suggestions);
+            let schools = []; fetch('/api/schools').then(r => r.json()).then(data => { schools = data; });
+            schoolInput.oninput = () => {
+                const val = schoolInput.value.toLowerCase(), filtered = schools.filter(s => s.toLowerCase().includes(val));
+                if (val && filtered.length) { suggestions.innerHTML = filtered.map(s => `<div class="p-3 hover:bg-purple-50 cursor-pointer border-b last:border-0">${s}</div>`).join(''); suggestions.classList.remove('hidden'); }
+                else suggestions.classList.add('hidden');
+            };
+            suggestions.onclick = (e) => { if (e.target.tagName === 'DIV') { schoolInput.value = e.target.textContent; suggestions.classList.add('hidden'); } };
+            document.onclick = (e) => { if (e.target !== schoolInput) suggestions.classList.add('hidden'); };
+        });
+    </script>
+</body>
+</html>
