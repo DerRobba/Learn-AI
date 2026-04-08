@@ -47,17 +47,9 @@ def inject_csrf_token():
     return {'csrf_token': generate_csrf_token()}
 
 def check_password_strength(password):
-    """Check if password meets requirements: min 8 chars, uppercase, lowercase, digit, special char."""
-    if len(password) < 8:
-        return False, "Passwort muss mindestens 8 Zeichen lang sein."
-    if not re.search(r'[A-Z]', password):
-        return False, "Passwort muss mindestens einen Großbuchstaben enthalten."
-    if not re.search(r'[a-z]', password):
-        return False, "Passwort muss mindestens einen Kleinbuchstaben enthalten."
-    if not re.search(r'\d', password):
-        return False, "Passwort muss mindestens eine Zahl enthalten."
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        return False, "Passwort muss mindestens ein Sonderzeichen enthalten."
+    """Check if password meets requirements: min 3 chars."""
+    if len(password) < 3:
+        return False, "Passwort muss mindestens 3 Zeichen lang sein."
     return True, ""
 
 def get_client_ip():
@@ -81,7 +73,9 @@ def require_csrf(f):
     def wrapper(*args, **kwargs):
         if request.method == 'POST':
             token = request.form.get('csrf_token')
+            session_token = session.get('csrf_token')
             if not validate_csrf_token(token):
+                print(f"CSRF Failure: Form Token={token}, Session Token={session_token}")
                 abort(403, 'Invalid CSRF token')
         return f(*args, **kwargs)
     wrapper.__name__ = f.__name__
@@ -280,7 +274,7 @@ def register_post():
     if password != password_confirm:
         return render_template('register.html', error='Die Passwörter stimmen nicht überein.')
 
-    if len(username) > 32 or len(password) < 8 or len(password) > 128 or len(school) > 64:
+    if len(username) > 32 or len(password) < 3 or len(password) > 128 or len(school) > 64:
         return render_template('register.html', error='Ungültige Eingabe-Länge.')
 
     # Password strength check

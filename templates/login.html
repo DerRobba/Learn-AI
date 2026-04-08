@@ -102,6 +102,7 @@
 
             <!-- Login Form -->
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <!-- Username Field -->
                 <div class="space-y-2 form-field">
                     <label for="username" class="flex items-center space-x-2 text-sm font-semibold text-gray-700">
