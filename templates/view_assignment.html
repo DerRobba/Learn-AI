@@ -129,6 +129,7 @@
                         <!-- Submission Form -->
                         <div class="bg-gradient-to-r from-gray-50 to-slate-50 rounded-2xl p-6 border border-gray-200">
                             <form method="POST" class="space-y-6">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <div>
                                     <label for="submission_content" class="block text-lg font-semibold text-gray-900 mb-3">
                                         Deine Lösung

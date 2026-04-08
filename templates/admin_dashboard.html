@@ -124,6 +124,7 @@
 
                 <!-- Add Teacher Form -->
                 <form method="POST" action="{{ url_for('assign_teacher_route') }}" class="space-y-4 mb-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="space-y-2">
                         <label for="teacher_username" class="block text-sm font-semibold text-gray-700">
                             Lehrer-Benutzername
@@ -202,6 +203,7 @@
 
                 <!-- Add Student Form -->
                 <form method="POST" action="{{ url_for('add_student_route') }}" class="space-y-4 mb-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="space-y-2">
                         <label for="student_username" class="block text-sm font-semibold text-gray-700">
                             Schüler-Benutzername

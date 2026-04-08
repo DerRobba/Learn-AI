@@ -102,6 +102,7 @@
 
             <!-- Assignment Form -->
             <form method="POST" class="space-y-8">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <!-- Title Section -->
                 <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
                     <div class="flex items-center space-x-3 mb-4">
