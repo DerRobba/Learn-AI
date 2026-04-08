@@ -803,22 +803,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (imageUploadButton) {
         imageUploadButton.addEventListener('click', () => {
-            imageInput.click();
+            if (typeof AndroidImageBridge !== 'undefined') {
+                AndroidImageBridge.requestImagePick();
+            } else {
+                imageInput.click();
+            }
         });
     }
 
     if (imageInput) {
         imageInput.addEventListener('change', (event) => {
-            const files = event.target.files;
-            if (files && files.length > 0) {
-                Array.from(files).forEach(file => {
-                    if (file.type.startsWith('image/')) {
-                        cacheImageOnServer(file);
-                    }
-                });
-                // Reset input so the same file can be picked again
-                imageInput.value = '';
-            }
+            const files = Array.from(event.target.files || []);
+            // Reset immediately so the same file can be picked again,
+            // but keep the File references in the local array
+            imageInput.value = '';
+            files.forEach(file => {
+                cacheImageOnServer(file);
+            });
         });
     }
 
@@ -860,65 +861,127 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function cacheImageOnServer(imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
+    // Called by Android via evaluateJavascript — fetches image data through JavascriptInterface
+    window.fetchPendingAndroidImage = function() {
+        if (typeof AndroidImageBridge === 'undefined') return;
+        if (!AndroidImageBridge.hasPendingImage()) return;
+        const mime = AndroidImageBridge.getPendingMime();
+        const b64 = AndroidImageBridge.getPendingBase64();
+        if (b64) {
+            window.injectImageFromAndroid('data:' + mime + ';base64,' + b64);
+        }
+    };
 
-        // Create a unique ID for this upload's preview and spinner
+    // Called by Android Kotlin when an image is selected — bypasses WebView File API issues
+    window.injectImageFromAndroid = function(dataUrl) {
         const uploadId = 'upload-' + Date.now();
-        
-        // Create preview element
         const previewItem = document.createElement('div');
         previewItem.className = 'relative w-20 h-20 flex-shrink-0 group';
         previewItem.dataset.uploadId = uploadId;
         previewItem.innerHTML = `
             <div class="w-full h-full rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                <img class="w-full h-full object-cover opacity-50" src="${URL.createObjectURL(imageFile)}">
+                <img class="w-full h-full object-cover opacity-50" src="${dataUrl}">
                 <div class="absolute inset-0 flex items-center justify-center bg-black/10">
                     <span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span>
                 </div>
             </div>
         `;
-        
         if (imagePreview) {
             imagePreview.classList.remove('hidden');
             const container = imagePreview.querySelector('.flex.gap-3') || imagePreview;
             container.appendChild(previewItem);
         }
-        
         updateSendButtonState();
 
         fetch('/cache-image', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: dataUrl, name: 'android_image.jpg' })
         })
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
             if (data.success) {
-                // Update preview with success state and delete button
                 previewItem.dataset.filename = data.filename;
                 previewItem.innerHTML = `
                     <div class="w-full h-full rounded-xl overflow-hidden border border-blue-200 shadow-sm">
-                        <img class="w-full h-full object-cover" src="${URL.createObjectURL(imageFile)}">
+                        <img class="w-full h-full object-cover" src="${dataUrl}">
                     </div>
-                    <button class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-20" 
+                    <button class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md opacity-100 z-20"
                             onclick="deleteCachedImage('${data.filename}', '${uploadId}')">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 `;
             } else {
                 previewItem.remove();
-                addBotMessage("Fehler beim Hochladen: " + data.error);
             }
         })
-        .catch(error => {
-            console.error('Error caching image:', error);
+        .catch(() => previewItem.remove())
+        .finally(() => updateSendButtonState());
+    };
+
+    function cacheImageOnServer(imageFile) {
+        const uploadId = 'upload-' + Date.now();
+
+        // Show preview with spinner immediately using a local object URL
+        const localUrl = URL.createObjectURL(imageFile);
+        const previewItem = document.createElement('div');
+        previewItem.className = 'relative w-20 h-20 flex-shrink-0 group';
+        previewItem.dataset.uploadId = uploadId;
+        previewItem.innerHTML = `
+            <div class="w-full h-full rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                <img class="w-full h-full object-cover opacity-50" src="${localUrl}">
+                <div class="absolute inset-0 flex items-center justify-center bg-black/10">
+                    <span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span>
+                </div>
+            </div>
+        `;
+
+        if (imagePreview) {
+            imagePreview.classList.remove('hidden');
+            const container = imagePreview.querySelector('.flex.gap-3') || imagePreview;
+            container.appendChild(previewItem);
+        }
+        updateSendButtonState();
+
+        // Use FileReader → base64 → JSON to avoid FormData/File issues in Android WebView
+        const reader = new FileReader();
+        reader.onerror = () => {
             previewItem.remove();
-            addBotMessage("Es gab ein Problem beim Hochladen des Bildes.");
-        })
-        .finally(() => {
+            addBotMessage("Fehler beim Lesen der Bilddatei.");
             updateSendButtonState();
-        });
+        };
+        reader.onload = (e) => {
+            const dataUrl = e.target.result; // e.g. "data:image/jpeg;base64,..."
+            fetch('/cache-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: dataUrl, name: imageFile.name || 'image.jpg' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    previewItem.dataset.filename = data.filename;
+                    previewItem.innerHTML = `
+                        <div class="w-full h-full rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+                            <img class="w-full h-full object-cover" src="${localUrl}">
+                        </div>
+                        <button class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md opacity-100 z-20"
+                                onclick="deleteCachedImage('${data.filename}', '${uploadId}')">
+                            <span class="material-symbols-outlined text-sm">close</span>
+                        </button>
+                    `;
+                } else {
+                    previewItem.remove();
+                    addBotMessage("Fehler beim Hochladen: " + data.error);
+                }
+            })
+            .catch(() => {
+                previewItem.remove();
+                addBotMessage("Es gab ein Problem beim Hochladen des Bildes.");
+            })
+            .finally(() => updateSendButtonState());
+        };
+        reader.readAsDataURL(imageFile);
     }
 
     // Global function so it can be called from inline onclick

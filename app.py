@@ -9,6 +9,7 @@ import traceback
 import threading
 import time as time_module
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, Response, abort, current_app, has_request_context
 import requests
 from dotenv import load_dotenv
@@ -1299,35 +1300,33 @@ def delete_subject_route(subject_id):
 
 @app.route('/cache-image', methods=['POST'])
 def cache_image():
-    if 'image' not in request.files:
-        return jsonify({'error': 'Kein Bild gefunden.'}), 400
-
-    image_file = request.files['image']
-    if image_file.filename == '':
-        return jsonify({'error': 'Kein Bild ausgewählt.'}), 400
-
     try:
-        # Generate a unique filename
-        filename = str(uuid.uuid4()) + os.path.splitext(image_file.filename)[1]
+        data = request.get_json(silent=True) or {}
+        data_url = data.get('data', '')
+        original_name = data.get('name', 'image.jpg')
+
+        if not data_url or ',' not in data_url:
+            return jsonify({'error': 'Kein Bild gefunden.'}), 400
+
+        # Parse  "data:<mime>;base64,<data>"
+        header, b64data = data_url.split(',', 1)
+        mime = header.split(':')[1].split(';')[0] if ':' in header else 'image/jpeg'
+        ext = os.path.splitext(original_name)[1].lower()
+        if not ext:
+            ext = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+                   'image/webp': '.webp', 'image/heic': '.heic'}.get(mime, '.jpg')
+
+        filename = str(uuid.uuid4()) + ext
         image_path = os.path.join('uploads', filename)
-        image_file.save(image_path)
+        with open(image_path, 'wb') as f:
+            f.write(base64.b64decode(b64data))
 
-        # Store filenames in session list
-        if 'cached_image_filenames' not in session:
+        if 'cached_image_filenames' not in session or not isinstance(session['cached_image_filenames'], list):
             session['cached_image_filenames'] = []
-        
-        # Make sure it's a list (for sessions that might have old single-file format)
-        if not isinstance(session['cached_image_filenames'], list):
-             session['cached_image_filenames'] = []
-
         session['cached_image_filenames'].append(filename)
         session.modified = True
 
-        return jsonify({
-            'success': True,
-            'filename': filename,
-            'message': 'Bild wurde zwischengespeichert.'
-        })
+        return jsonify({'success': True, 'filename': filename})
 
     except Exception as e:
         print(f"Error caching image: {e}")
